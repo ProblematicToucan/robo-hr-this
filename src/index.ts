@@ -5,6 +5,8 @@ import { uploadRoutes } from "./routes/upload";
 import { evaluateRoutes } from "./routes/evaluate";
 import { resultRoutes } from "./routes/result";
 import { logger } from "./config/logger";
+import { getQueueConfig } from "./queue/queue-config";
+import { evaluationProcessor } from "./workers/evaluation-worker";
 
 // Load environment variables
 config();
@@ -42,14 +44,20 @@ async function startServer() {
         await AppDataSource.initialize();
         logger.info("Database connection established");
 
+        // Initialize queue system
+        const queueConfig = getQueueConfig();
+        queueConfig.startWorker(evaluationProcessor);
+        logger.info("Queue system initialized and worker started");
+
         // Start server
         app.listen(PORT, () => {
             logger.info(`Server running at http://localhost:${PORT}`);
             logger.info("Available endpoints:");
             logger.info("  POST /upload - Upload CV and project files");
-            logger.info("  POST /evaluate - Start evaluation");
+            logger.info("  POST /evaluate - Start evaluation (async)");
             logger.info("  GET /result/:id - Get evaluation results");
             logger.info("  GET /health - Health check");
+            logger.info("Queue system: BullMQ with Redis");
         });
     } catch (error: any) {
         logger.error("Failed to start server:", error);

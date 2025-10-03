@@ -2,14 +2,9 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { AppDataSource } from "../db/data-source";
 import { Job } from "../db/entities/job.entity";
-import { JobArtifact } from "../db/entities/job-artifact.entity";
 import { File } from "../db/entities/file.entity";
 import { logger } from "../config/logger";
-import {
-    CVEvaluationPayload,
-    ProjectEvaluationPayload,
-    FinalSynthesisPayload
-} from "../types/evaluation";
+import { getQueueConfig } from "../queue/queue-config";
 
 const router = Router();
 
@@ -60,86 +55,36 @@ router.post('/', async (req: Request, res: Response) => {
             reportFileId
         }, 'Evaluation job created');
 
-        // SIMPLE MOCK EVALUATION (no queue, immediate processing)
+        // Add job to queue for async processing
         try {
-            // Mark as processing
-            job.status = 'processing';
-            await jobRepository.save(job);
+            const queueConfig = getQueueConfig();
+            const evaluationQueue = queueConfig.getEvaluationQueue();
 
-            // Create mock results for each stage
-            const artifactRepository = AppDataSource.getRepository(JobArtifact);
-
-            // Stage S1: CV Evaluation
-            const s1Payload: CVEvaluationPayload = {
-                parameters: {
-                    technical_skills: 4,
-                    experience_level: 5,
-                    relevant_achievements: 4,
-                    cultural_fit: 4
-                },
-                weighted_average_1_to_5: 4.25,
-                cv_match_rate: 0.85,
-                cv_feedback: "Strong technical background with relevant experience. Good cultural fit indicators."
-            };
-
-            await artifactRepository.save({
+            await evaluationQueue.add('evaluate', {
                 jobId: job.id,
-                stage: 'S1',
-                payload_json: s1Payload,
-                version: "1.0"
+                jobTitle,
+                cvFileId,
+                reportFileId
+            }, {
+                priority: 1,
+                delay: 0
             });
-
-            // Stage S2: Project Evaluation
-            const s2Payload: ProjectEvaluationPayload = {
-                parameters: {
-                    correctness: 4,
-                    code_quality: 4,
-                    resilience: 3,
-                    documentation: 4,
-                    creativity: 4
-                },
-                project_score: 3.8,
-                project_feedback: "Well-architected solution with good code quality. Documentation could be improved."
-            };
-
-            await artifactRepository.save({
-                jobId: job.id,
-                stage: 'S2',
-                payload_json: s2Payload,
-                version: "1.0"
-            });
-
-            // Stage S3: Final Synthesis
-            const s3Payload: FinalSynthesisPayload = {
-                overall_summary: "Strong candidate with excellent technical skills and good project execution. Recommended for the role."
-            };
-
-            await artifactRepository.save({
-                jobId: job.id,
-                stage: 'S3',
-                payload_json: s3Payload,
-                version: "1.0"
-            });
-
-            // Mark as completed
-            job.status = 'completed';
-            await jobRepository.save(job);
 
             logger.info({
                 jobId: job.id,
-                status: 'completed'
-            }, 'Mock evaluation completed');
+                queueName: 'evaluation'
+            }, 'Evaluation job added to queue');
 
         } catch (error) {
-            // Mark as failed
+            // Mark as failed if queue operation fails
             job.status = 'failed';
-            job.error_code = 'mock_evaluation_error';
+            job.error_code = 'queue_error';
             await jobRepository.save(job);
 
             logger.error({
                 jobId: job.id,
                 error: error instanceof Error ? error.message : 'Unknown error'
-            }, 'Mock evaluation failed');
+            }, 'Failed to add job to queue');
         }
 
         res.json({
