@@ -5,7 +5,13 @@
   "scripts": {
     "dev": "nodemon --watch 'src/**/*.ts' --exec ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "typeorm": "typeorm-ts-node-commonjs -d src/db/data-source.ts",
+    "migration:generate": "typeorm-ts-node-commonjs -d src/db/data-source.ts migration:generate",
+    "migration:create": "typeorm-ts-node-commonjs migration:create",
+    "migration:run": "typeorm-ts-node-commonjs -d src/db/data-source.ts migration:run",
+    "migration:show": "typeorm-ts-node-commonjs -d src/db/data-source.ts migration:show",
+    "migration:revert": "typeorm-ts-node-commonjs -d src/db/data-source.ts migration:revert"
   },
   "keywords": [],
   "author": "",

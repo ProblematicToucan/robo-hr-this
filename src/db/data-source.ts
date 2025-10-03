@@ -1,16 +1,13 @@
 import { config } from "dotenv";
 import { DataSource } from "typeorm";
+import { Job } from "./entities/job.entity";
 
 config();
 
 export const dataSource = new DataSource({
     type: "postgres",
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "5432"),
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    url: process.env.DATABASE_URL,
     synchronize: false,
-    entities: [],
-    migrations: [],
+    entities: ['src/db/entities/*.entity.ts'],
+    migrations: ['src/db/migrations/*.ts'],
 });
