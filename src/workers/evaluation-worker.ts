@@ -39,7 +39,7 @@ export class EvaluationWorker {
         }, 'Starting evaluation processing');
 
         try {
-            // Update job status to processing
+            // Update job status to processing (don't increment attempts)
             await this.updateJobStatus(jobId, 'processing');
 
             // Verify files exist
@@ -59,7 +59,7 @@ export class EvaluationWorker {
             await this.processStageS2(jobId, reportFile, jobTitle);
             await this.processStageS3(jobId);
 
-            // Mark job as completed
+            // Mark job as completed (don't increment attempts)
             await this.updateJobStatus(jobId, 'completed');
 
             logger.info({
@@ -75,8 +75,8 @@ export class EvaluationWorker {
                 error: error instanceof Error ? error.message : 'Unknown error'
             }, 'Evaluation processing failed');
 
-            // Mark job as failed
-            await this.updateJobStatus(jobId, 'failed', 'processing_error');
+            // Mark job as failed (increment attempts for failed jobs)
+            await this.updateJobStatus(jobId, 'failed', 'processing_error', true);
 
             throw error;
         }
@@ -179,14 +179,17 @@ export class EvaluationWorker {
     /**
      * Update job status
      */
-    private async updateJobStatus(jobId: number, status: string, errorCode?: string) {
+    private async updateJobStatus(jobId: number, status: string, errorCode?: string, incrementAttempts: boolean = false) {
         const job = await this.jobRepository.findOne({ where: { id: jobId } });
         if (job) {
             job.status = status;
             if (errorCode) {
                 job.error_code = errorCode;
             }
-            job.attempts = (job.attempts || 0) + 1;
+            // Only increment attempts for failed jobs or when explicitly requested
+            if (incrementAttempts) {
+                job.attempts = (job.attempts || 0) + 1;
+            }
             await this.jobRepository.save(job);
         }
     }
