@@ -1,6 +1,5 @@
 import { config } from "dotenv";
 import { DataSource } from "typeorm";
-import { Job } from "./entities/job.entity";
 
 config();
 
