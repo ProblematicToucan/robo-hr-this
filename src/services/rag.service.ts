@@ -1,4 +1,5 @@
 import { getVectorDbService } from './vector-db.service';
+import { getOpenAIService } from './openai.service';
 import { logger } from '../config/logger';
 
 /**
@@ -9,6 +10,7 @@ import { logger } from '../config/logger';
  */
 export class RAGService {
     private vectorDb = getVectorDbService();
+    private openai = getOpenAIService();
 
     /**
      * Retrieve context for CV evaluation (Stage S1)
@@ -166,19 +168,29 @@ export class RAGService {
 
     /**
      * Generate query embedding using OpenAI
-     * TODO: Implement real OpenAI embedding generation
      */
     private async generateQueryEmbedding(query: string): Promise<number[]> {
-        // TODO: Call OpenAI embedding API
-        // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        // const response = await openai.embeddings.create({
-        //     model: process.env.EMBEDDING_MODEL || 'text-embedding-3-large',
-        //     input: query
-        // });
-        // return response.data[0].embedding;
+        try {
+            logger.info({
+                query: query.substring(0, 100),
+                model: 'text-embedding-3-small'
+            }, 'Generating OpenAI query embedding');
 
-        // For now, return deterministic mock embedding based on query content
-        return this.generateDeterministicEmbedding(query, 0);
+            const embedding = await this.openai.generateEmbedding(query);
+
+            logger.info({
+                embeddingDimension: embedding.length
+            }, 'OpenAI query embedding generated successfully');
+
+            return embedding;
+
+        } catch (error: any) {
+            logger.error('Failed to generate OpenAI query embedding:', error);
+
+            // Fallback to mock embedding if OpenAI fails
+            logger.warn('Falling back to mock query embedding');
+            return this.generateDeterministicEmbedding(query, 0);
+        }
     }
 
     /**

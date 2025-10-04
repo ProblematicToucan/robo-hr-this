@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { getDocumentProcessorService } from "../services/document-processor.service";
 import { getRAGService } from "../services/rag.service";
+import { getOpenAIService } from "../services/openai.service";
 import { logger } from "../config/logger";
 
 const router = Router();
@@ -220,6 +221,51 @@ router.post('/cleanup', async (req: Request, res: Response) => {
         logger.error('Cleanup failed:', error);
         res.status(500).json({
             error: 'Cleanup failed',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * GET /ingest/openai-test
+ * 
+ * Test OpenAI connection and embedding generation.
+ */
+router.get('/openai-test', async (req: Request, res: Response) => {
+    try {
+        const openaiService = getOpenAIService();
+
+        // Test connection
+        const connected = await openaiService.testConnection();
+
+        if (!connected) {
+            return res.status(500).json({
+                success: false,
+                error: 'OpenAI connection failed',
+                message: 'Check your OPENAI_API_KEY or EMBEDDING_MODEL environment variable'
+            });
+        }
+
+        // Test embedding generation
+        const testText = "This is a test for OpenAI embedding generation";
+        const embedding = await openaiService.generateEmbedding(testText);
+
+        res.json({
+            success: true,
+            message: 'OpenAI connection and embedding generation successful',
+            results: {
+                connected,
+                embeddingDimension: embedding.length,
+                testText,
+                embeddingSample: embedding.slice(0, 5) // First 5 values
+            }
+        });
+
+    } catch (error: any) {
+        logger.error('OpenAI test failed:', error);
+        res.status(500).json({
+            success: false,
+            error: 'OpenAI test failed',
             message: error.message
         });
     }

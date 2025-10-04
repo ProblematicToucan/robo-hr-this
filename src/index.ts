@@ -11,6 +11,7 @@ import { evaluationProcessor } from "./workers/evaluation-worker";
 import { getVectorDbService } from "./services/vector-db.service";
 import { getDocumentProcessorService } from "./services/document-processor.service";
 import { getRAGService } from "./services/rag.service";
+import { getOpenAIService } from "./services/openai.service";
 
 // Load environment variables
 config();
@@ -83,6 +84,15 @@ async function startServer() {
         // Initialize document processor
         const documentProcessor = getDocumentProcessorService();
         logger.info("Document processor initialized");
+
+        // Initialize OpenAI service
+        const openaiService = getOpenAIService();
+        const openaiConnected = await openaiService.testConnection();
+        if (openaiConnected) {
+            logger.info("OpenAI service initialized and connected");
+        } else {
+            logger.warn("OpenAI service initialized but connection test failed");
+        }
 
         // Initialize RAG service
         const ragService = getRAGService();

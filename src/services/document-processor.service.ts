@@ -6,6 +6,7 @@ import { AppDataSource } from '../db/data-source';
 import { Document } from '../db/entities/document.entity';
 import { Embedding } from '../db/entities/embedding.entity';
 import { getVectorDbService } from './vector-db.service';
+import { getOpenAIService } from './openai.service';
 import { logger } from '../config/logger';
 
 /**
@@ -18,6 +19,7 @@ export class DocumentProcessorService {
     private documentRepository = AppDataSource.getRepository(Document);
     private embeddingRepository = AppDataSource.getRepository(Embedding);
     private vectorDb = getVectorDbService();
+    private openai = getOpenAIService();
 
     /**
      * Calculate content hash for a file
@@ -181,21 +183,39 @@ export class DocumentProcessorService {
     }
 
     /**
-     * Generate embeddings for text chunks
-     * TODO: Replace with real OpenAI embedding generation
+     * Generate embeddings for text chunks using OpenAI
      */
     private async generateEmbeddings(chunks: string[]): Promise<Array<{ vector: number[] }>> {
-        // Generate deterministic mock embeddings based on content
-        const embeddings = chunks.map((chunk, index) => ({
-            vector: this.generateDeterministicEmbedding(chunk, index)
-        }));
+        try {
+            logger.info({
+                chunksCount: chunks.length
+            }, 'Generating OpenAI embeddings for chunks');
 
-        logger.info({
-            chunksCount: chunks.length,
-            embeddingDimension: 1536
-        }, 'Mock embeddings generated');
+            // Generate real embeddings using OpenAI
+            const embeddings = await this.openai.generateEmbeddings(chunks);
 
-        return embeddings;
+            const result = embeddings.map(embedding => ({
+                vector: embedding
+            }));
+
+            logger.info({
+                chunksCount: chunks.length,
+                embeddingDimension: embeddings[0]?.length || 0
+            }, 'OpenAI embeddings generated successfully');
+
+            return result;
+
+        } catch (error: any) {
+            logger.error('Failed to generate OpenAI embeddings:', error);
+
+            // Fallback to mock embeddings if OpenAI fails
+            logger.warn('Falling back to mock embeddings');
+            const embeddings = chunks.map((chunk, index) => ({
+                vector: this.generateDeterministicEmbedding(chunk, index)
+            }));
+
+            return embeddings;
+        }
     }
 
     /**
