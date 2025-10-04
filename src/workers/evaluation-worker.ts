@@ -6,17 +6,58 @@ import { AppDataSource } from '../db/data-source';
 import { Job as JobEntity } from '../db/entities/job.entity';
 import { JobArtifact } from '../db/entities/job-artifact.entity';
 import { File } from '../db/entities/file.entity';
-import { logger } from '../config/logger';
-import { getOpenAIService } from '../services/openai.service';
+import { logger, ILogger } from '../config/logger';
+import { getOpenAIService, IOpenAIService } from '../services/openai.service';
 import { getRAGService } from '../services/rag.service';
+import { IDataSource, IRepository } from '../db/interfaces';
 import {
     CVEvaluationPayload,
     ProjectEvaluationPayload,
     FinalSynthesisPayload
 } from '../types/evaluation';
 
+// Interfaces for better testability
+export interface IFileSystem {
+    readFileSync(path: string): Buffer;
+}
+
+export interface IPDFParser {
+    (buffer: Buffer): Promise<{ text: string }>;
+}
+
+export interface IRAGService {
+    retrieveCVContext(query: string, topK: number): Promise<{
+        context: string;
+        sources: Array<{
+            document_type: string;
+            chunk_text: string;
+            score: number;
+        }>;
+    }>;
+    retrieveProjectContext(query: string, topK: number): Promise<{
+        context: string;
+        sources: Array<{
+            document_type: string;
+            chunk_text: string;
+            score: number;
+        }>;
+    }>;
+    retrieveFinalContext(query: string, topK: number): Promise<{
+        context: string;
+        sources: Array<{
+            document_type: string;
+            chunk_text: string;
+            score: number;
+        }>;
+    }>;
+}
+
+export interface IEvaluationWorker {
+    processEvaluation(job: Job): Promise<{ success: boolean; jobId: number }>;
+}
+
 /**
- * Evaluation Worker
+ * Evaluation Worker with Dependency Injection
  * 
  * Processes evaluation jobs asynchronously.
  * Implements the 3-stage evaluation pipeline:
@@ -24,20 +65,45 @@ import {
  * S2: Project Evaluation  
  * S3: Final Synthesis
  */
-export class EvaluationWorker {
-    private jobRepository = AppDataSource.getRepository(JobEntity);
-    private artifactRepository = AppDataSource.getRepository(JobArtifact);
-    private fileRepository = AppDataSource.getRepository(File);
-    private openai = getOpenAIService();
-    private rag = getRAGService();
+export class EvaluationWorker implements IEvaluationWorker {
+    constructor(
+        private dataSource: IDataSource,
+        private openai: IOpenAIService,
+        private rag: IRAGService,
+        private logger: ILogger,
+        private fileSystem: IFileSystem = fs,
+        private pdfParser: IPDFParser = pdf
+    ) {
+        this.jobRepository = dataSource.getRepository(JobEntity);
+        this.artifactRepository = dataSource.getRepository(JobArtifact);
+        this.fileRepository = dataSource.getRepository(File);
+    }
+
+    private jobRepository: IRepository<JobEntity>;
+    private artifactRepository: IRepository<JobArtifact>;
+    private fileRepository: IRepository<File>;
+
+    /**
+     * Factory method for production use
+     */
+    static create(): EvaluationWorker {
+        return new EvaluationWorker(
+            AppDataSource as any, // Cast to interface
+            getOpenAIService(),
+            getRAGService(),
+            logger,
+            fs,
+            pdf
+        );
+    }
 
     /**
      * Process evaluation job
      */
-    async processEvaluation(job: Job) {
+    async processEvaluation(job: Job): Promise<{ success: boolean; jobId: number }> {
         const { jobId, jobTitle, cvFileId, reportFileId } = job.data;
 
-        logger.info({
+        this.logger.info({
             jobId,
             jobTitle,
             cvFileId,
@@ -69,7 +135,7 @@ export class EvaluationWorker {
             // Mark job as completed (don't increment attempts)
             await this.updateJobStatus(jobId, 'completed');
 
-            logger.info({
+            this.logger.info({
                 jobId,
                 status: 'completed'
             }, 'Evaluation processing completed');
@@ -77,10 +143,10 @@ export class EvaluationWorker {
             return { success: true, jobId };
 
         } catch (error) {
-            logger.error({
+            this.logger.error('Evaluation processing failed', {
                 jobId,
                 error: error instanceof Error ? error.message : 'Unknown error'
-            }, 'Evaluation processing failed');
+            });
 
             // Mark job as failed (increment attempts for failed jobs)
             await this.updateJobStatus(jobId, 'failed', 'processing_error', true);
@@ -94,11 +160,11 @@ export class EvaluationWorker {
      */
     private async parsePDF(filePath: string): Promise<string> {
         try {
-            const pdfBuffer = fs.readFileSync(filePath);
-            const pdfData = await pdf(pdfBuffer);
+            const pdfBuffer = this.fileSystem.readFileSync(filePath);
+            const pdfData = await this.pdfParser(pdfBuffer);
             return pdfData.text;
         } catch (error: any) {
-            logger.error('Failed to parse PDF:', error);
+            this.logger.error('Failed to parse PDF:', error);
             throw new Error(`PDF parsing failed: ${error.message}`);
         }
     }
@@ -106,8 +172,8 @@ export class EvaluationWorker {
     /**
      * Stage S1: CV Evaluation
      */
-    private async processStageS1(jobId: number, cvFile: File, jobTitle: string) {
-        logger.info({ jobId, stage: 'S1' }, 'Processing CV evaluation');
+    private async processStageS1(jobId: number, cvFile: File, jobTitle: string): Promise<void> {
+        this.logger.info({ jobId, stage: 'S1' }, 'Processing CV evaluation');
 
         try {
             // Parse CV PDF
@@ -172,7 +238,7 @@ Please evaluate this CV against the job requirements. Consider technical skills,
                 version: "1.0"
             });
 
-            logger.info({
+            this.logger.info({
                 jobId,
                 stage: 'S1',
                 cvMatchRate: s1Payload.cv_match_rate,
@@ -180,7 +246,7 @@ Please evaluate this CV against the job requirements. Consider technical skills,
             }, 'CV evaluation completed');
 
         } catch (error: any) {
-            logger.error({ jobId, stage: 'S1', error: error.message }, 'CV evaluation failed');
+            this.logger.error('CV evaluation failed', { jobId, stage: 'S1', error: error.message });
             // No fallback - let error bubble up to trigger job retry
             throw error;
         }
@@ -189,8 +255,8 @@ Please evaluate this CV against the job requirements. Consider technical skills,
     /**
      * Stage S2: Project Evaluation
      */
-    private async processStageS2(jobId: number, reportFile: File, jobTitle: string) {
-        logger.info({ jobId, stage: 'S2' }, 'Processing project evaluation');
+    private async processStageS2(jobId: number, reportFile: File, jobTitle: string): Promise<void> {
+        this.logger.info({ jobId, stage: 'S2' }, 'Processing project evaluation');
 
         try {
             // Parse project report PDF
@@ -255,7 +321,7 @@ Please evaluate this project report. Consider correctness of implementation, cod
                 version: "1.0"
             });
 
-            logger.info({
+            this.logger.info({
                 jobId,
                 stage: 'S2',
                 projectScore: s2Payload.project_score,
@@ -263,7 +329,7 @@ Please evaluate this project report. Consider correctness of implementation, cod
             }, 'Project evaluation completed');
 
         } catch (error: any) {
-            logger.error({ jobId, stage: 'S2', error: error.message }, 'Project evaluation failed');
+            this.logger.error('Project evaluation failed', { jobId, stage: 'S2', error: error.message });
             // No fallback - let error bubble up to trigger job retry
             throw error;
         }
@@ -272,8 +338,8 @@ Please evaluate this project report. Consider correctness of implementation, cod
     /**
      * Stage S3: Final Synthesis
      */
-    private async processStageS3(jobId: number) {
-        logger.info({ jobId, stage: 'S3' }, 'Processing final synthesis');
+    private async processStageS3(jobId: number): Promise<void> {
+        this.logger.info({ jobId, stage: 'S3' }, 'Processing final synthesis');
 
         // Get previous stage results
         const s1Artifact = await this.artifactRepository.findOne({
@@ -347,14 +413,14 @@ Please provide a comprehensive final assessment and hiring recommendation based 
                 version: "1.0"
             });
 
-            logger.info({
+            this.logger.info({
                 jobId,
                 stage: 'S3',
                 sourcesCount: sources.length
             }, 'Final synthesis completed');
 
         } catch (error: any) {
-            logger.error({ jobId, stage: 'S3', error: error.message }, 'Final synthesis failed');
+            this.logger.error('Final synthesis failed', { jobId, stage: 'S3', error: error.message });
             // No fallback - let error bubble up to trigger job retry
             throw error;
         }
@@ -363,7 +429,7 @@ Please provide a comprehensive final assessment and hiring recommendation based 
     /**
      * Update job status
      */
-    private async updateJobStatus(jobId: number, status: string, errorCode?: string, incrementAttempts: boolean = false) {
+    private async updateJobStatus(jobId: number, status: string, errorCode?: string, incrementAttempts: boolean = false): Promise<void> {
         const job = await this.jobRepository.findOne({ where: { id: jobId } });
         if (job) {
             job.status = status;
@@ -381,6 +447,6 @@ Please provide a comprehensive final assessment and hiring recommendation based 
 
 // Export worker function for BullMQ
 export async function evaluationProcessor(job: Job) {
-    const worker = new EvaluationWorker();
+    const worker = EvaluationWorker.create();
     return await worker.processEvaluation(job);
 }
