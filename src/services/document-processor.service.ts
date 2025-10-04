@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import pdf from 'pdf-parse';
 import { AppDataSource } from '../db/data-source';
 import { Document } from '../db/entities/document.entity';
@@ -19,6 +20,31 @@ export class DocumentProcessorService {
     private vectorDb = getVectorDbService();
 
     /**
+     * Calculate content hash for a file
+     */
+    private calculateContentHash(filePath: string): string {
+        const fileBuffer = fs.readFileSync(filePath);
+        return crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    }
+
+    /**
+     * Check if document already exists with same content
+     */
+    private async findExistingDocument(documentType: string, contentHash: string): Promise<Document | null> {
+        try {
+            return await this.documentRepository.findOne({
+                where: {
+                    type: documentType,
+                    content_hash: contentHash
+                }
+            });
+        } catch (error: any) {
+            logger.warn('Failed to check existing document:', error);
+            return null;
+        }
+    }
+
+    /**
      * Process a PDF document and store embeddings
      */
     async processDocument(filePath: string, documentType: string, version: string = '1.0'): Promise<Document> {
@@ -34,6 +60,24 @@ export class DocumentProcessorService {
                 version
             }, 'Starting document processing');
 
+            // Calculate content hash
+            const contentHash = this.calculateContentHash(filePath);
+
+            // Check if document already exists with same content
+            const existingDocument = await this.findExistingDocument(documentType, contentHash);
+
+            if (existingDocument) {
+                logger.info({
+                    documentId: existingDocument.id,
+                    documentType,
+                    contentHash: contentHash.substring(0, 8) + '...',
+                    filePath
+                }, 'Document already exists with same content, skipping processing');
+
+                await queryRunner.rollbackTransaction();
+                return existingDocument;
+            }
+
             // Parse PDF
             const pdfBuffer = fs.readFileSync(filePath);
             const pdfData = await pdf(pdfBuffer);
@@ -47,7 +91,8 @@ export class DocumentProcessorService {
             const document = await queryRunner.manager.save(Document, {
                 type: documentType,
                 version,
-                storage_uri: filePath
+                storage_uri: filePath,
+                content_hash: contentHash
             });
 
             // Chunk text
@@ -152,6 +197,113 @@ export class DocumentProcessorService {
         }, 'Mock embeddings generated');
 
         return embeddings;
+    }
+
+    /**
+     * Update existing document with new version
+     */
+    async updateDocument(existingDocument: Document, filePath: string, newVersion: string): Promise<Document> {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            logger.info({
+                documentId: existingDocument.id,
+                oldVersion: existingDocument.version,
+                newVersion,
+                filePath
+            }, 'Updating existing document');
+
+            // Calculate new content hash
+            const contentHash = this.calculateContentHash(filePath);
+
+            // Parse PDF
+            const pdfBuffer = fs.readFileSync(filePath);
+            const pdfData = await pdf(pdfBuffer);
+            const text = pdfData.text;
+
+            if (!text || text.trim().length === 0) {
+                throw new Error('PDF contains no extractable text');
+            }
+
+            // Update document record
+            existingDocument.version = newVersion;
+            existingDocument.storage_uri = filePath;
+            existingDocument.content_hash = contentHash;
+
+            const updatedDocument = await queryRunner.manager.save(Document, existingDocument);
+
+            // Delete old embeddings from vector database
+            await this.vectorDb.deletePoints({
+                must: [
+                    {
+                        key: 'document_id',
+                        match: { value: existingDocument.id }
+                    }
+                ]
+            });
+
+            // Delete old embedding references
+            await queryRunner.manager.delete(Embedding, { docId: existingDocument.id });
+
+            // Chunk text
+            const chunks = this.chunkText(text, 512, 64);
+
+            // Generate embeddings for each chunk
+            const embeddings = await this.generateEmbeddings(chunks);
+
+            // Store new embeddings in vector database
+            const points = embeddings.map((embedding, index) => ({
+                id: `${updatedDocument.id}_${index}`,
+                vector: embedding.vector,
+                payload: {
+                    document_id: updatedDocument.id,
+                    document_type: updatedDocument.type,
+                    chunk_index: index,
+                    chunk_text: chunks[index],
+                    version: newVersion,
+                    created_at: new Date().toISOString()
+                }
+            }));
+
+            await this.vectorDb.upsertPoints(points);
+
+            // Store new embedding references
+            const embeddingRefs = embeddings.map((embedding, index) => {
+                const ref = new Embedding();
+                ref.docId = updatedDocument.id;
+                ref.chunk_id = `${updatedDocument.id}_${index}`;
+                ref.vector_ref = `${updatedDocument.id}_${index}`;
+                ref.metadata = {
+                    chunk_index: index,
+                    chunk_text: chunks[index],
+                    document_type: updatedDocument.type,
+                    version: newVersion
+                };
+                return ref;
+            });
+
+            await queryRunner.manager.save(Embedding, embeddingRefs);
+
+            // Commit the transaction
+            await queryRunner.commitTransaction();
+
+            logger.info({
+                documentId: updatedDocument.id,
+                chunksCount: chunks.length,
+                embeddingsCount: embeddings.length
+            }, 'Document updated successfully');
+
+            return updatedDocument;
+
+        } catch (error: any) {
+            await queryRunner.rollbackTransaction();
+            logger.error('Document update failed:', error);
+            throw new Error(`Document update failed: ${error.message}`);
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     /**

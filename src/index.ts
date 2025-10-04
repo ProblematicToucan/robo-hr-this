@@ -107,6 +107,7 @@ async function startServer() {
             logger.info("  POST /ingest/directory - Ingest all PDFs from directory");
             logger.info("  GET /ingest/documents - List all processed documents");
             logger.info("  DELETE /ingest/documents/:id - Delete document and embeddings");
+            logger.info("  POST /ingest/update - Update existing document with new version");
             logger.info("  GET /ingest/test - Test RAG system with sample queries");
             logger.info("  POST /ingest/cleanup - Clean up orphaned records");
             logger.info("🔧 System:");

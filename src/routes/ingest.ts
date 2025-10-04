@@ -225,4 +225,62 @@ router.post('/cleanup', async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * POST /ingest/update
+ * 
+ * Update an existing document with new version.
+ * Body: { documentId: number, filePath: string, newVersion: string }
+ */
+router.post('/update', async (req: Request, res: Response) => {
+    try {
+        const { documentId, filePath, newVersion } = req.body;
+
+        if (!documentId || !filePath || !newVersion) {
+            return res.status(400).json({
+                error: 'documentId, filePath, and newVersion are required'
+            });
+        }
+
+        const documentProcessor = getDocumentProcessorService();
+
+        // Get existing document
+        const existingDocument = await documentProcessor.getAllDocuments();
+        const document = existingDocument.find(doc => doc.id === documentId);
+
+        if (!document) {
+            return res.status(404).json({
+                error: 'Document not found'
+            });
+        }
+
+        // Update document
+        const updatedDocument = await documentProcessor.updateDocument(document, filePath, newVersion);
+
+        logger.info({
+            documentId: updatedDocument.id,
+            newVersion,
+            filePath
+        }, 'Document updated successfully');
+
+        res.json({
+            success: true,
+            message: 'Document updated successfully',
+            document: {
+                id: updatedDocument.id,
+                type: updatedDocument.type,
+                version: updatedDocument.version,
+                storage_uri: updatedDocument.storage_uri,
+                updated_at: updatedDocument.updated_at
+            }
+        });
+
+    } catch (error: any) {
+        logger.error('Document update failed:', error);
+        res.status(500).json({
+            error: 'Document update failed',
+            message: error.message
+        });
+    }
+});
+
 export { router as ingestRoutes };

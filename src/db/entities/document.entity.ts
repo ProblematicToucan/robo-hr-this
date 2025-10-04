@@ -49,6 +49,13 @@ export class Document {
     })
     storage_uri: string; // Path to PDF file (local or S3)
 
+    @Column({
+        type: "varchar",
+        length: 64,
+        unique: true
+    })
+    content_hash: string; // SHA256 hash of file content for deduplication
+
     @CreateDateColumn({ name: "created_at" })
     created_at: Date; // When document was added
 
