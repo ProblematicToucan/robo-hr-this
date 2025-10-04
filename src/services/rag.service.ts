@@ -3,15 +3,71 @@ import { getOpenAIService } from './openai.service';
 import { logger } from '../config/logger';
 import { RetryUtil } from '../utils/retry.util';
 
+// Interfaces for better testability
+export interface IVectorDbService {
+    searchVectors(queryVector: number[], options?: {
+        limit?: number;
+        filter?: Record<string, any>;
+        scoreThreshold?: number;
+    }): Promise<Array<{
+        id: string;
+        score: number;
+        payload: Record<string, any>;
+    }>>;
+    getCollectionStats(): Promise<{
+        pointsCount: number;
+        segmentsCount: number;
+        status: string;
+    }>;
+}
+
+export interface IOpenAIService {
+    generateEmbedding(text: string): Promise<number[]>;
+}
+
+export interface IRetryUtil {
+    executeWithRetry<T>(
+        operation: () => Promise<T>,
+        options: {
+            maxAttempts?: number;
+            baseDelay?: number;
+            maxDelay?: number;
+            operationName?: string;
+        }
+    ): Promise<T>;
+}
+
+export interface ILogger {
+    info(data: any, message: string): void;
+    error(message: string, error?: any): void;
+    warn(message: string, data?: any): void;
+}
+
 /**
- * RAG (Retrieval-Augmented Generation) Service
+ * RAG (Retrieval-Augmented Generation) Service with Dependency Injection
  * 
  * Handles context retrieval for LLM evaluation.
  * Provides relevant document chunks based on evaluation stage and query.
  */
 export class RAGService {
-    private vectorDb = getVectorDbService();
-    private openai = getOpenAIService();
+    constructor(
+        private vectorDb: IVectorDbService,
+        private openai: IOpenAIService,
+        private retryUtil: IRetryUtil,
+        private logger: ILogger
+    ) { }
+
+    /**
+     * Factory method for production use
+     */
+    static create(): RAGService {
+        return new RAGService(
+            getVectorDbService(),
+            getOpenAIService(),
+            RetryUtil,
+            logger
+        );
+    }
 
     /**
      * Retrieve context for CV evaluation (Stage S1)
@@ -24,7 +80,7 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        return await RetryUtil.executeWithRetry(
+        return await this.retryUtil.executeWithRetry(
             async () => {
                 // Generate deterministic query embedding
                 const queryEmbedding = await this.generateQueryEmbedding(query);
@@ -54,7 +110,7 @@ export class RAGService {
                     score: result.score
                 }));
 
-                logger.info({
+                this.logger.info({
                     query: query.substring(0, 100),
                     resultsCount: results.length,
                     contextLength: context.length
@@ -82,7 +138,7 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        return await RetryUtil.executeWithRetry(
+        return await this.retryUtil.executeWithRetry(
             async () => {
                 // Generate deterministic query embedding
                 const queryEmbedding = await this.generateQueryEmbedding(query);
@@ -112,7 +168,7 @@ export class RAGService {
                     score: result.score
                 }));
 
-                logger.info({
+                this.logger.info({
                     query: query.substring(0, 100),
                     resultsCount: results.length,
                     contextLength: context.length
@@ -140,7 +196,7 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        return await RetryUtil.executeWithRetry(
+        return await this.retryUtil.executeWithRetry(
             async () => {
                 // Generate deterministic query embedding
                 const queryEmbedding = await this.generateQueryEmbedding(query);
@@ -162,7 +218,7 @@ export class RAGService {
                     score: result.score
                 }));
 
-                logger.info({
+                this.logger.info({
                     query: query.substring(0, 100),
                     resultsCount: results.length,
                     contextLength: context.length
@@ -184,24 +240,24 @@ export class RAGService {
      */
     private async generateQueryEmbedding(query: string): Promise<number[]> {
         try {
-            logger.info({
+            this.logger.info({
                 query: query.substring(0, 100),
                 model: 'text-embedding-3-small'
             }, 'Generating OpenAI query embedding');
 
             const embedding = await this.openai.generateEmbedding(query);
 
-            logger.info({
+            this.logger.info({
                 embeddingDimension: embedding.length
             }, 'OpenAI query embedding generated successfully');
 
             return embedding;
 
         } catch (error: any) {
-            logger.error('Failed to generate OpenAI query embedding:', error);
+            this.logger.error('Failed to generate OpenAI query embedding:', error);
 
             // Fallback to mock embedding if OpenAI fails
-            logger.warn('Falling back to mock query embedding');
+            this.logger.warn('Falling back to mock query embedding');
             return this.generateDeterministicEmbedding(query, 0);
         }
     }
@@ -251,7 +307,7 @@ export class RAGService {
             };
 
         } catch (error: any) {
-            logger.error('Failed to get RAG stats:', error);
+            this.logger.error('Failed to get RAG stats:', error);
             throw new Error(`Failed to get RAG stats: ${error.message}`);
         }
     }
@@ -271,7 +327,7 @@ export class RAGService {
             const projectContext = await this.retrieveProjectContext(testQuery, 3);
             const finalContext = await this.retrieveFinalContext(testQuery, 2);
 
-            logger.info('RAG system test completed');
+            this.logger.info({}, 'RAG system test completed');
 
             return {
                 cvContext,
@@ -280,7 +336,7 @@ export class RAGService {
             };
 
         } catch (error: any) {
-            logger.error('RAG system test failed:', error);
+            this.logger.error('RAG system test failed:', error);
             throw new Error(`RAG system test failed: ${error.message}`);
         }
     }
@@ -291,7 +347,7 @@ let ragService: RAGService | null = null;
 
 export function getRAGService(): RAGService {
     if (!ragService) {
-        ragService = new RAGService();
+        ragService = RAGService.create();
     }
     return ragService;
 }
