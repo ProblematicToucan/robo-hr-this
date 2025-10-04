@@ -7,20 +7,87 @@ import { Document } from '../db/entities/document.entity';
 import { Embedding } from '../db/entities/embedding.entity';
 import { getVectorDbService } from './vector-db.service';
 import { getOpenAIService } from './openai.service';
-import { logger } from '../config/logger';
-import { RetryUtil } from '../utils/retry.util';
+import { logger, ILogger } from '../config/logger';
+import { RetryUtil, IRetryUtil } from '../utils/retry.util';
+
+// Interfaces for better testability
+export interface IVectorDbService {
+    upsertPoints(points: Array<{
+        id: string;
+        vector: number[];
+        payload: Record<string, any>;
+    }>): Promise<void>;
+    deletePoints(filter: Record<string, any>): Promise<void>;
+    getCollectionStats(): Promise<{
+        pointsCount: number;
+        segmentsCount: number;
+        status: string;
+    }>;
+}
+
+export interface IOpenAIService {
+    generateEmbeddings(texts: string[]): Promise<number[][]>;
+}
+
+export interface IRepository<T> {
+    findOne(options: any): Promise<T | null>;
+    find(options?: any): Promise<T[]>;
+    save(entity: any, data?: any): Promise<T>;
+    delete(entity: any, criteria?: any): Promise<void>;
+}
+
+export interface IQueryRunner {
+    connect(): Promise<void>;
+    startTransaction(): Promise<void>;
+    commitTransaction(): Promise<void>;
+    rollbackTransaction(): Promise<void>;
+    release(): Promise<void>;
+    manager: {
+        save(entity: any, data: any): Promise<any>;
+        delete(entity: any, criteria: any): Promise<void>;
+    };
+}
+
+export interface IDataSource {
+    createQueryRunner(): IQueryRunner;
+    getRepository<T>(entity: any): IRepository<T>;
+}
 
 /**
- * Document Processor Service
+ * Document Processor Service with Dependency Injection
  * 
  * Handles PDF parsing, text chunking, and embedding generation.
  * Processes ground-truth documents for RAG system.
  */
 export class DocumentProcessorService {
-    private documentRepository = AppDataSource.getRepository(Document);
-    private embeddingRepository = AppDataSource.getRepository(Embedding);
-    private vectorDb = getVectorDbService();
-    private openai = getOpenAIService();
+    constructor(
+        private dataSource: IDataSource,
+        private vectorDb: IVectorDbService,
+        private openai: IOpenAIService,
+        private retryUtil: IRetryUtil,
+        private logger: ILogger
+    ) { }
+
+    /**
+     * Factory method for production use
+     */
+    static create(): DocumentProcessorService {
+        return new DocumentProcessorService(
+            AppDataSource as any, // Cast to interface
+            getVectorDbService(),
+            getOpenAIService(),
+            RetryUtil,
+            logger
+        );
+    }
+
+    private get documentRepository() {
+        return this.dataSource.getRepository(Document);
+    }
+
+    private get embeddingRepository() {
+        return this.dataSource.getRepository(Embedding);
+    }
 
     /**
      * Calculate content hash for a file
@@ -40,9 +107,9 @@ export class DocumentProcessorService {
                     type: documentType,
                     content_hash: contentHash
                 }
-            });
+            }) as Document | null;
         } catch (error: any) {
-            logger.warn('Failed to check existing document:', error);
+            this.logger.warn('Failed to check existing document:', error);
             return null;
         }
     }
@@ -52,12 +119,12 @@ export class DocumentProcessorService {
      */
     async processDocument(filePath: string, documentType: string, version: string = '1.0'): Promise<Document> {
         // Start a database transaction
-        const queryRunner = AppDataSource.createQueryRunner();
+        const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
         try {
-            logger.info({
+            this.logger.info({
                 filePath,
                 documentType,
                 version
@@ -70,7 +137,7 @@ export class DocumentProcessorService {
             const existingDocument = await this.findExistingDocument(documentType, contentHash);
 
             if (existingDocument) {
-                logger.info({
+                this.logger.info({
                     documentId: existingDocument.id,
                     documentType,
                     contentHash: contentHash.substring(0, 8) + '...',
@@ -91,7 +158,7 @@ export class DocumentProcessorService {
             }
 
             // Create document record within transaction with retry
-            const document = await RetryUtil.executeWithRetry(
+            const document = await this.retryUtil.executeWithRetry(
                 async () => {
                     return await queryRunner.manager.save(Document, {
                         type: documentType,
@@ -151,7 +218,7 @@ export class DocumentProcessorService {
             // Commit the transaction
             await queryRunner.commitTransaction();
 
-            logger.info({
+            this.logger.info({
                 documentId: document.id,
                 chunksCount: chunks.length,
                 embeddingsCount: embeddings.length
@@ -163,11 +230,11 @@ export class DocumentProcessorService {
             // Rollback the transaction
             await queryRunner.rollbackTransaction();
 
-            logger.error({
+            this.logger.error('Document processing failed, transaction rolled back', {
                 filePath,
                 documentType,
                 error: error.message
-            }, 'Document processing failed, transaction rolled back');
+            });
 
             throw new Error(`Document processing failed: ${error.message}`);
         } finally {
@@ -198,7 +265,7 @@ export class DocumentProcessorService {
      */
     private async generateEmbeddings(chunks: string[]): Promise<Array<{ vector: number[] }>> {
         try {
-            logger.info({
+            this.logger.info({
                 chunksCount: chunks.length
             }, 'Generating OpenAI embeddings for chunks');
 
@@ -209,7 +276,7 @@ export class DocumentProcessorService {
                 vector: embedding
             }));
 
-            logger.info({
+            this.logger.info({
                 chunksCount: chunks.length,
                 embeddingDimension: embeddings[0]?.length || 0
             }, 'OpenAI embeddings generated successfully');
@@ -217,10 +284,10 @@ export class DocumentProcessorService {
             return result;
 
         } catch (error: any) {
-            logger.error('Failed to generate OpenAI embeddings:', error);
+            this.logger.error('Failed to generate OpenAI embeddings:', error);
 
             // Fallback to mock embeddings if OpenAI fails
-            logger.warn('Falling back to mock embeddings');
+            this.logger.warn('Falling back to mock embeddings');
             const embeddings = chunks.map((chunk, index) => ({
                 vector: this.generateDeterministicEmbedding(chunk, index)
             }));
@@ -260,12 +327,12 @@ export class DocumentProcessorService {
      * Update existing document with new version
      */
     async updateDocument(existingDocument: Document, filePath: string, newVersion: string): Promise<Document> {
-        const queryRunner = AppDataSource.createQueryRunner();
+        const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
         try {
-            logger.info({
+            this.logger.info({
                 documentId: existingDocument.id,
                 oldVersion: existingDocument.version,
                 newVersion,
@@ -346,7 +413,7 @@ export class DocumentProcessorService {
             // Commit the transaction
             await queryRunner.commitTransaction();
 
-            logger.info({
+            this.logger.info({
                 documentId: updatedDocument.id,
                 chunksCount: chunks.length,
                 embeddingsCount: embeddings.length
@@ -356,7 +423,7 @@ export class DocumentProcessorService {
 
         } catch (error: any) {
             await queryRunner.rollbackTransaction();
-            logger.error('Document update failed:', error);
+            this.logger.error('Document update failed:', error);
             throw new Error(`Document update failed: ${error.message}`);
         } finally {
             await queryRunner.release();
@@ -382,7 +449,7 @@ export class DocumentProcessorService {
                         const document = await this.processDocument(filePath, documentType);
                         documents.push(document);
 
-                        logger.info({
+                        this.logger.info({
                             file,
                             documentId: document.id,
                             documentType
@@ -390,17 +457,17 @@ export class DocumentProcessorService {
 
                     } catch (error: any) {
                         failedFiles.push(file);
-                        logger.error({
+                        this.logger.error('Failed to process file', {
                             file,
                             error: error.message
-                        }, 'Failed to process file');
+                        });
 
                         // Continue processing other files
                     }
                 }
             }
 
-            logger.info({
+            this.logger.info({
                 directoryPath,
                 processedCount: documents.length,
                 failedCount: failedFiles.length,
@@ -408,15 +475,15 @@ export class DocumentProcessorService {
             }, 'Directory processing completed');
 
             if (failedFiles.length > 0) {
-                logger.warn({
+                this.logger.warn('Some files failed to process', {
                     failedFiles
-                }, 'Some files failed to process');
+                });
             }
 
             return documents;
 
         } catch (error: any) {
-            logger.error('Directory processing failed:', error);
+            this.logger.error('Directory processing failed:', error);
             throw new Error(`Directory processing failed: ${error.message}`);
         }
     }
@@ -447,9 +514,9 @@ export class DocumentProcessorService {
         try {
             return await this.documentRepository.find({
                 order: { created_at: 'DESC' }
-            });
+            }) as Document[];
         } catch (error: any) {
-            logger.error('Failed to get documents:', error);
+            this.logger.error('Failed to get documents:', error);
             throw new Error(`Failed to get documents: ${error.message}`);
         }
     }
@@ -459,7 +526,7 @@ export class DocumentProcessorService {
      */
     async deleteDocument(documentId: number): Promise<void> {
         // Start a database transaction
-        const queryRunner = AppDataSource.createQueryRunner();
+        const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
@@ -481,7 +548,7 @@ export class DocumentProcessorService {
             // Commit the transaction
             await queryRunner.commitTransaction();
 
-            logger.info({
+            this.logger.info({
                 documentId
             }, 'Document deleted successfully');
 
@@ -489,10 +556,10 @@ export class DocumentProcessorService {
             // Rollback the transaction
             await queryRunner.rollbackTransaction();
 
-            logger.error({
+            this.logger.error('Failed to delete document, transaction rolled back', {
                 documentId,
                 error: error.message
-            }, 'Failed to delete document, transaction rolled back');
+            });
 
             throw new Error(`Failed to delete document: ${error.message}`);
         } finally {
@@ -510,10 +577,10 @@ export class DocumentProcessorService {
         documentsByType: Record<string, number>;
     }> {
         try {
-            const documents = await this.documentRepository.find();
-            const embeddings = await this.embeddingRepository.find();
+            const documents = await this.documentRepository.find() as Document[];
+            const embeddings = await this.embeddingRepository.find() as Embedding[];
 
-            const documentsByType = documents.reduce((acc, doc) => {
+            const documentsByType = documents.reduce((acc: Record<string, number>, doc: Document) => {
                 acc[doc.type] = (acc[doc.type] || 0) + 1;
                 return acc;
             }, {} as Record<string, number>);
@@ -525,7 +592,7 @@ export class DocumentProcessorService {
             };
 
         } catch (error: any) {
-            logger.error('Failed to get document stats:', error);
+            this.logger.error('Failed to get document stats:', error);
             throw new Error(`Failed to get document stats: ${error.message}`);
         }
     }
@@ -539,10 +606,10 @@ export class DocumentProcessorService {
         cleanedUp: boolean;
     }> {
         try {
-            logger.info('Starting orphaned records cleanup');
+            this.logger.info({}, 'Starting orphaned records cleanup');
 
             // Get all documents
-            const documents = await this.documentRepository.find();
+            const documents = await this.documentRepository.find() as Document[];
             const orphanedDocuments: number[] = [];
             const orphanedEmbeddings: number[] = [];
 
@@ -557,14 +624,14 @@ export class DocumentProcessorService {
                         // Find orphaned embeddings
                         const embeddings = await this.embeddingRepository.find({
                             where: { docId: doc.id }
-                        });
-                        orphanedEmbeddings.push(...embeddings.map(e => e.id));
+                        }) as Embedding[];
+                        orphanedEmbeddings.push(...embeddings.map((e: Embedding) => e.id));
                     }
                 } catch (error: any) {
-                    logger.warn({
+                    this.logger.warn('Could not verify document vectors', {
                         documentId: doc.id,
                         error: error.message
-                    }, 'Could not verify document vectors');
+                    });
                 }
             }
 
@@ -574,7 +641,7 @@ export class DocumentProcessorService {
                 await this.embeddingRepository.delete(orphanedEmbeddings);
             }
 
-            logger.info({
+            this.logger.info({
                 orphanedDocuments: orphanedDocuments.length,
                 orphanedEmbeddings: orphanedEmbeddings.length
             }, 'Orphaned records cleanup completed');
@@ -586,7 +653,7 @@ export class DocumentProcessorService {
             };
 
         } catch (error: any) {
-            logger.error('Failed to cleanup orphaned records:', error);
+            this.logger.error('Failed to cleanup orphaned records:', error);
             throw new Error(`Failed to cleanup orphaned records: ${error.message}`);
         }
     }
@@ -597,7 +664,7 @@ let documentProcessorService: DocumentProcessorService | null = null;
 
 export function getDocumentProcessorService(): DocumentProcessorService {
     if (!documentProcessorService) {
-        documentProcessorService = new DocumentProcessorService();
+        documentProcessorService = DocumentProcessorService.create();
     }
     return documentProcessorService;
 }
