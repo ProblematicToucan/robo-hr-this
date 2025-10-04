@@ -38,7 +38,33 @@ app.get("/", (req: Request, res: Response) => {
     res.json({
         message: "AI-Powered CV & Project Evaluator API",
         version: "1.0.0",
-        endpoints: ["/upload", "/evaluate", "/result/:id", "/health"]
+        description: "Automated CV and project evaluation using RAG + LLM chaining",
+        endpoints: {
+            "File Management": {
+                "POST /upload": "Upload CV and project files"
+            },
+            "Evaluation System": {
+                "POST /evaluate": "Start evaluation (async)",
+                "GET /result/:id": "Get evaluation results"
+            },
+            "Document Ingestion": {
+                "POST /ingest/document": "Ingest single ground-truth document",
+                "POST /ingest/directory": "Ingest all PDFs from directory",
+                "GET /ingest/documents": "List all processed documents",
+                "DELETE /ingest/documents/:id": "Delete document and embeddings",
+                "GET /ingest/test": "Test RAG system with sample queries"
+            },
+            "System": {
+                "GET /health": "Health check",
+                "GET /": "API information"
+            }
+        },
+        infrastructure: {
+            "Queue System": "BullMQ with Redis",
+            "Vector Database": "Qdrant",
+            "Database": "PostgreSQL with TypeORM",
+            "LLM": "OpenAI (ready for integration)"
+        }
     });
 });
 
@@ -71,16 +97,24 @@ async function startServer() {
         app.listen(PORT, () => {
             logger.info(`Server running at http://localhost:${PORT}`);
             logger.info("Available endpoints:");
+            logger.info("📁 File Management:");
             logger.info("  POST /upload - Upload CV and project files");
+            logger.info("📊 Evaluation System:");
             logger.info("  POST /evaluate - Start evaluation (async)");
             logger.info("  GET /result/:id - Get evaluation results");
-            logger.info("  POST /ingest/document - Ingest ground-truth document");
+            logger.info("📚 Document Ingestion:");
+            logger.info("  POST /ingest/document - Ingest single ground-truth document");
             logger.info("  POST /ingest/directory - Ingest all PDFs from directory");
-            logger.info("  GET /ingest/documents - List all documents");
-            logger.info("  GET /ingest/test - Test RAG system");
+            logger.info("  GET /ingest/documents - List all processed documents");
+            logger.info("  DELETE /ingest/documents/:id - Delete document and embeddings");
+            logger.info("  GET /ingest/test - Test RAG system with sample queries");
+            logger.info("🔧 System:");
             logger.info("  GET /health - Health check");
-            logger.info("Queue system: BullMQ with Redis");
-            logger.info("Vector database: Qdrant");
+            logger.info("  GET / - API information");
+            logger.info("🚀 Infrastructure:");
+            logger.info("  Queue system: BullMQ with Redis");
+            logger.info("  Vector database: Qdrant");
+            logger.info("  Database: PostgreSQL with TypeORM");
         });
     } catch (error: any) {
         logger.error("Failed to start server:", error);

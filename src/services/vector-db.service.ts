@@ -71,9 +71,19 @@ export class VectorDbService {
         payload: Record<string, any>;
     }>): Promise<void> {
         try {
+            // Convert string IDs to UUIDs for Qdrant compatibility
+            const qdrantPoints = points.map(point => ({
+                id: this.generateUUID(point.id),
+                vector: point.vector,
+                payload: {
+                    ...point.payload,
+                    original_id: point.id // Keep original ID in payload
+                }
+            }));
+
             await this.client.upsert(this.collectionName, {
                 wait: true,
-                points: points
+                points: qdrantPoints
             });
 
             logger.info({
@@ -85,6 +95,32 @@ export class VectorDbService {
             logger.error('Failed to upsert points:', error);
             throw new Error(`Failed to upsert points: ${error.message}`);
         }
+    }
+
+    /**
+     * Generate a UUID from a string ID
+     */
+    private generateUUID(input: string): string {
+        // Simple UUID v4 generation from string
+        const hash = this.simpleHash(input);
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = (hash + Math.random() * 16) % 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    /**
+     * Simple hash function for consistent UUID generation
+     */
+    private simpleHash(str: string): number {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash);
     }
 
     /**
@@ -112,7 +148,7 @@ export class VectorDbService {
             });
 
             const results = searchResult.map(point => ({
-                id: point.id as string,
+                id: (point.payload?.original_id as string) || (point.id as string),
                 score: point.score,
                 payload: point.payload || {}
             }));
@@ -137,9 +173,12 @@ export class VectorDbService {
      */
     async deletePoints(filter: Record<string, any>): Promise<void> {
         try {
+            // Convert document_id filter to use original_id in payload
+            const qdrantFilter = this.convertFilterForQdrant(filter);
+
             await this.client.delete(this.collectionName, {
                 wait: true,
-                filter
+                filter: qdrantFilter
             });
 
             logger.info({
@@ -151,6 +190,27 @@ export class VectorDbService {
             logger.error('Failed to delete points:', error);
             throw new Error(`Failed to delete points: ${error.message}`);
         }
+    }
+
+    /**
+     * Convert filter to work with Qdrant payload structure
+     */
+    private convertFilterForQdrant(filter: Record<string, any>): Record<string, any> {
+        if (filter.must && Array.isArray(filter.must)) {
+            return {
+                ...filter,
+                must: filter.must.map((condition: any) => {
+                    if (condition.key === 'document_id') {
+                        return {
+                            key: 'original_id',
+                            match: condition.match
+                        };
+                    }
+                    return condition;
+                })
+            };
+        }
+        return filter;
     }
 
     /**
