@@ -1,6 +1,23 @@
 import { logger } from '../config/logger';
 
 /**
+ * Retry Utility Interface
+ * 
+ * Defines the contract for retry operations across the application.
+ */
+export interface IRetryUtil {
+    executeWithRetry<T>(
+        operation: () => Promise<T>,
+        options: {
+            maxAttempts?: number;
+            baseDelay?: number;
+            maxDelay?: number;
+            operationName?: string;
+        }
+    ): Promise<T>;
+}
+
+/**
  * Retry Utility
  * 
  * Provides retry logic with exponential backoff for critical operations.

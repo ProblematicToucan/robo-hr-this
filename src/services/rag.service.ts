@@ -1,7 +1,7 @@
 import { getVectorDbService } from './vector-db.service';
 import { getOpenAIService } from './openai.service';
-import { logger } from '../config/logger';
-import { RetryUtil } from '../utils/retry.util';
+import { logger, ILogger } from '../config/logger';
+import { RetryUtil, IRetryUtil } from '../utils/retry.util';
 
 // Interfaces for better testability
 export interface IVectorDbService {
@@ -23,24 +23,6 @@ export interface IVectorDbService {
 
 export interface IOpenAIService {
     generateEmbedding(text: string): Promise<number[]>;
-}
-
-export interface IRetryUtil {
-    executeWithRetry<T>(
-        operation: () => Promise<T>,
-        options: {
-            maxAttempts?: number;
-            baseDelay?: number;
-            maxDelay?: number;
-            operationName?: string;
-        }
-    ): Promise<T>;
-}
-
-export interface ILogger {
-    info(data: any, message: string): void;
-    error(message: string, error?: any): void;
-    warn(message: string, data?: any): void;
 }
 
 /**

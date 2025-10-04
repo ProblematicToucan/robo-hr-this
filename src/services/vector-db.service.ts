@@ -1,6 +1,6 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { logger } from '../config/logger';
-import { RetryUtil } from '../utils/retry.util';
+import { logger, ILogger } from '../config/logger';
+import { RetryUtil, IRetryUtil } from '../utils/retry.util';
 
 // Interfaces for better testability
 export interface IQdrantClient {
@@ -10,23 +10,6 @@ export interface IQdrantClient {
     upsert(collectionName: string, data: any): Promise<any>;
     search(collectionName: string, params: any): Promise<any>;
     delete(collectionName: string, params: any): Promise<any>;
-}
-
-export interface IRetryUtil {
-    executeWithRetry<T>(
-        operation: () => Promise<T>,
-        options: {
-            maxAttempts?: number;
-            baseDelay?: number;
-            maxDelay?: number;
-            operationName?: string;
-        }
-    ): Promise<T>;
-}
-
-export interface ILogger {
-    info(data: any, message: string): void;
-    error(message: string, error?: any): void;
 }
 
 /**

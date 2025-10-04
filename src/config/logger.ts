@@ -1,6 +1,18 @@
 import pino from 'pino';
 
 /**
+ * Logger Interface
+ * 
+ * Defines the contract for logging operations across the application.
+ */
+export interface ILogger {
+    info(data: any, message: string): void;
+    error(message: string, error?: any): void;
+    warn(message: string, data?: any): void;
+    debug(data: any, message: string): void;
+}
+
+/**
  * Logger Configuration
  * 
  * High-performance JSON logger for the CV evaluation system.
