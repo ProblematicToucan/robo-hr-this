@@ -141,6 +141,12 @@ curl -X POST http://localhost:3000/upload \
   -F "report=@path/to/report.pdf"
 ```
 
+**Request Body:**
+- `cv` (file): PDF file for CV (required)
+- `report` (file): PDF file for project report (required)
+- File size limit: 10MB per file
+- Only PDF files are allowed
+
 **Response:**
 ```json
 {
@@ -149,12 +155,19 @@ curl -X POST http://localhost:3000/upload \
 }
 ```
 
+**Error Responses:**
+```json
+{
+  "error": "Both CV and report files are required"
+}
+```
+
 ### Evaluation System
 
 #### `POST /evaluate`
 Start the evaluation process.
 
-**Request:**
+**Request Body:**
 ```json
 {
   "jobTitle": "Product Engineer (Backend)",
@@ -162,6 +175,11 @@ Start the evaluation process.
   "reportFileId": 456
 }
 ```
+
+**Request Parameters:**
+- `jobTitle` (string, required): Job title for evaluation context
+- `cvFileId` (number, required): ID of uploaded CV file
+- `reportFileId` (number, required): ID of uploaded report file
 
 **Response:**
 ```json
@@ -171,14 +189,35 @@ Start the evaluation process.
 }
 ```
 
+**Error Responses:**
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "code": "too_small",
+      "minimum": 1,
+      "type": "string",
+      "inclusive": true,
+      "exact": false,
+      "message": "Job title is required",
+      "path": ["jobTitle"]
+    }
+  ]
+}
+```
+
 #### `GET /result/:id`
 Get evaluation results.
+
+**URL Parameters:**
+- `id` (number, required): Job ID to retrieve results for
 
 **Response (Processing):**
 ```json
 {
   "id": 789,
-  "status": "queued" | "processing"
+  "status": "processing"
 }
 ```
 
@@ -197,30 +236,303 @@ Get evaluation results.
 }
 ```
 
+**Response (Failed):**
+```json
+{
+  "id": 789,
+  "status": "failed",
+  "error": "Evaluation failed after maximum retry attempts",
+  "error_code": "llm_timeout",
+  "attempts": 5,
+  "message": "The evaluation could not be completed due to service unavailability. Please try again later."
+}
+```
+
 ### Document Ingestion
 
 #### `POST /ingest/document`
 Ingest a single ground-truth document.
 
+**Request Body:**
+```json
+{
+  "documentPath": "/path/to/document.pdf",
+  "documentType": "job_description",
+  "version": "1.0"
+}
+```
+
+**Request Parameters:**
+- `documentPath` (string, required): Path to the PDF document
+- `documentType` (enum, required): One of `job_description`, `case_brief`, `cv_rubric`, `project_rubric`
+- `version` (string, optional): Document version (default: "1.0")
+
+**Response:**
+```json
+{
+  "success": true,
+  "document": {
+    "id": 123,
+    "type": "job_description",
+    "version": "1.0",
+    "storage_uri": "/path/to/stored/document.pdf",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
 #### `POST /ingest/directory`
-Ingest all PDFs from a directory.
+Ingest all PDF documents from a directory.
+
+**Request Body:**
+```json
+{
+  "directoryPath": "src/ground"
+}
+```
+
+**Request Parameters:**
+- `directoryPath` (string, required): Path to directory containing PDF files
+
+**Response:**
+```json
+{
+  "success": true,
+  "documents": [
+    {
+      "id": 123,
+      "type": "job_description",
+      "version": "1.0",
+      "storage_uri": "/path/to/document1.pdf",
+      "created_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": 124,
+      "type": "cv_rubric",
+      "version": "1.0",
+      "storage_uri": "/path/to/document2.pdf",
+      "created_at": "2024-01-15T10:31:00Z"
+    }
+  ],
+  "count": 2
+}
+```
 
 #### `GET /ingest/documents`
 List all processed documents.
 
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "success": true,
+  "documents": [
+    {
+      "id": 123,
+      "type": "job_description",
+      "version": "1.0",
+      "storage_uri": "/path/to/document.pdf",
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "stats": {
+    "total_documents": 4,
+    "by_type": {
+      "job_description": 1,
+      "case_brief": 1,
+      "cv_rubric": 1,
+      "project_rubric": 1
+    }
+  }
+}
+```
+
 #### `DELETE /ingest/documents/:id`
 Delete a document and its embeddings.
 
+**URL Parameters:**
+- `id` (number, required): Document ID to delete
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Document deleted successfully"
+}
+```
+
 #### `GET /ingest/test`
 Test the RAG system with sample queries.
+
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "success": true,
+  "testResults": {
+    "cv_context_test": {
+      "query": "backend technical skills",
+      "results": [
+        {
+          "document_type": "job_description",
+          "chunk_text": "Required skills: Node.js, TypeScript...",
+          "score": 0.95
+        }
+      ]
+    },
+    "project_context_test": {
+      "query": "project evaluation criteria",
+      "results": [
+        {
+          "document_type": "project_rubric",
+          "chunk_text": "Evaluation criteria: architecture, testing...",
+          "score": 0.88
+        }
+      ]
+    }
+  },
+  "stats": {
+    "total_vectors": 150,
+    "collections": ["documents"],
+    "embedding_model": "text-embedding-3-small"
+  }
+}
+```
+
+#### `POST /ingest/cleanup`
+Clean up orphaned records (documents without corresponding vectors).
+
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Orphaned records cleanup completed",
+  "result": {
+    "orphaned_documents": 2,
+    "orphaned_embeddings": 15,
+    "cleaned_up": true
+  }
+}
+```
+
+#### `GET /ingest/openai-test`
+Test OpenAI connection and embedding generation.
+
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "OpenAI connection and embedding generation successful",
+  "results": {
+    "connected": true,
+    "embeddingDimension": 1536,
+    "testText": "This is a test for OpenAI embedding generation",
+    "embeddingSample": [0.123, -0.456, 0.789, -0.321, 0.654]
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": "OpenAI connection failed",
+  "message": "Check your OPENAI_API_KEY or EMBEDDING_MODEL environment variable"
+}
+```
+
+#### `POST /ingest/update`
+Update an existing document with new version.
+
+**Request Body:**
+```json
+{
+  "documentId": 123,
+  "filePath": "/path/to/new/document.pdf",
+  "newVersion": "2.0"
+}
+```
+
+**Request Parameters:**
+- `documentId` (number, required): ID of document to update
+- `filePath` (string, required): Path to new document file
+- `newVersion` (string, required): New version number
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Document updated successfully",
+  "document": {
+    "id": 123,
+    "type": "job_description",
+    "version": "2.0",
+    "storage_uri": "/path/to/new/document.pdf",
+    "updated_at": "2024-01-15T11:00:00Z"
+  }
+}
+```
 
 ### System
 
 #### `GET /health`
 Health check endpoint.
 
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
 #### `GET /`
 API information and available endpoints.
+
+**Request:** No body required
+
+**Response:**
+```json
+{
+  "message": "AI-Powered CV & Project Evaluator API",
+  "version": "1.0.0",
+  "description": "Automated CV and project evaluation using RAG + LLM chaining",
+  "endpoints": {
+    "File Management": {
+      "POST /upload": "Upload CV and project files"
+    },
+    "Evaluation System": {
+      "POST /evaluate": "Start evaluation (async)",
+      "GET /result/:id": "Get evaluation results"
+    },
+    "Document Ingestion": {
+      "POST /ingest/document": "Ingest single ground-truth document",
+      "POST /ingest/directory": "Ingest all PDFs from directory",
+      "GET /ingest/documents": "List all processed documents",
+      "DELETE /ingest/documents/:id": "Delete document and embeddings",
+      "GET /ingest/test": "Test RAG system with sample queries"
+    },
+    "System": {
+      "GET /health": "Health check",
+      "GET /": "API information"
+    }
+  },
+  "infrastructure": {
+    "Queue System": "BullMQ with Redis",
+    "Vector Database": "Qdrant",
+    "Database": "PostgreSQL with TypeORM",
+    "LLM": "OpenAI (ready for integration)"
+  }
+}
+```
 
 ## 🔄 Evaluation Pipeline
 
@@ -312,32 +624,3 @@ All configuration is managed through environment variables. See the `.env` examp
 - **Dead Letter Queue**: Failed jobs for manual inspection
 - **Idempotency**: Safe retry mechanisms
 - **Validation**: Input/output schema validation
-
-## 🔮 Future Improvements
-
-- [ ] Authentication & RBAC for secure access
-- [ ] Admin dashboard for job monitoring
-- [ ] Hybrid retrieval (BM25 + embeddings)
-- [ ] Fine-tuned evaluation models
-- [ ] Multi-language support
-- [ ] Advanced analytics and reporting
-
-## 📝 License
-
-ISC License
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## 📞 Support
-
-For questions and support, please open an issue in the repository.
-
----
-
-**Built with ❤️ using Node.js, TypeScript, and OpenAI**
