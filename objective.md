@@ -102,7 +102,7 @@ A backend service that automates initial screening of job applications by evalua
 
 ## Configuration
 - Top-K retrieval: RAG_TOP_K=6
-- Embedding model: EMBEDDING_MODEL=text-embedding-3-large
+- Embedding model: EMBEDDING_MODEL=text-embedding-3-small
 - LLM model: LLM_MODEL=gpt-4o-mini (example)
 - Temperature: LLM_TEMPERATURE=0.1
 - Queue attempts/backoff:
