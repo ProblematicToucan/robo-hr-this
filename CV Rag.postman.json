@@ -1,0 +1,427 @@
+{
+    "info": {
+        "name": "CV Rag",
+        "description": "",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Core",
+            "description": "",
+            "item": [
+                {
+                    "name": "Upload",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "POST",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "cv",
+                                    "value": "file:///Users/gamalaziz/Downloads/Gamal Abdul Aziz.pdf",
+                                    "type": "file",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "report",
+                                    "value": "file:///Users/gamalaziz/Downloads/project-report.pdf",
+                                    "type": "file",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/upload",
+                            "path": [
+                                "upload"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Evaluate",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"jobTitle\": \"string\",\n    \"cvFileId\": 0,\n    \"reportFileId\": 0\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/evaluate",
+                            "path": [
+                                "evaluate"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Result",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "GET",
+                        "body": {},
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/result/:id",
+                            "path": [
+                                "result",
+                                ":id"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": [
+                                {
+                                    "key": "id",
+                                    "description": "",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                }
+            ],
+            "auth": {}
+        },
+        {
+            "name": "Ground Truth",
+            "description": "",
+            "item": [
+                {
+                    "name": "Ingest Document",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"documentPath\": \"string\",\n    \"documentType\": \"string\",\n    \"version\": \"string\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/document",
+                            "path": [
+                                "ingest",
+                                "document"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Ingest Directory",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"directoryPath\": \"string\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/directory",
+                            "path": [
+                                "ingest",
+                                "directory"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Document List",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "GET",
+                        "body": {},
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/documents",
+                            "path": [
+                                "ingest",
+                                "documents"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Delete document",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "DELETE",
+                        "body": {},
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/documents/:id",
+                            "path": [
+                                "ingest",
+                                "documents",
+                                ":id"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": [
+                                {
+                                    "key": "id",
+                                    "description": "",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                },
+                {
+                    "name": "Test RAG Query",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "GET",
+                        "body": {},
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/test",
+                            "path": [
+                                "ingest",
+                                "test"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                }
+            ],
+            "auth": {}
+        },
+        {
+            "name": "OpenAI",
+            "description": "",
+            "item": [
+                {
+                    "name": "OpenAI Test",
+                    "description": "",
+                    "event": [],
+                    "auth": {},
+                    "request": {
+                        "auth": {},
+                        "method": "GET",
+                        "body": {},
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/ingest/openai-test",
+                            "path": [
+                                "ingest",
+                                "openai-test"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        }
+                    },
+                    "response": [],
+                    "protocolProfileBehavior": {
+                        "strictSSL": false,
+                        "followRedirects": true
+                    }
+                }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                }
+            ],
+            "auth": {}
+        },
+        {
+            "name": "Heath",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/health",
+                    "path": [
+                        "health"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [],
+                    "variable": []
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        }
+    ],
+    "variable": [],
+    "event": [],
+    "auth": {}
+}
