@@ -178,7 +178,7 @@ Get evaluation results.
 ```json
 {
   "id": 789,
-  "status": "processing" | "processing"
+  "status": "queued" | "processing"
 }
 ```
 
