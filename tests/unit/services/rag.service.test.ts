@@ -134,22 +134,14 @@ describe('RAG Service - Dependency Injection Tests', () => {
             });
         });
 
-        it('should handle OpenAI embedding errors with fallback', async () => {
+        it('should handle OpenAI embedding errors by throwing', async () => {
             const query = 'Test query';
             const error = new Error('OpenAI API failed');
-            const mockFallbackEmbedding = globalThis.testUtils.generateMockEmbedding();
 
             mockOpenAI.generateEmbedding.mockRejectedValue(error);
-            mockVectorDb.searchVectors.mockResolvedValue([]);
 
-            const result = await service.retrieveCVContext(query);
-
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to generate OpenAI query embedding:', error);
-            expect(mockLogger.warn).toHaveBeenCalledWith('Falling back to mock query embedding');
-            expect(mockVectorDb.searchVectors).toHaveBeenCalledWith(
-                expect.arrayContaining([expect.any(Number)]),
-                expect.any(Object)
-            );
+            await expect(service.retrieveCVContext(query)).rejects.toThrow('OpenAI API failed');
+            // Error is thrown before logging, so no error log is called
         });
 
         it('should use default topK when not provided', async () => {
@@ -384,32 +376,22 @@ describe('RAG Service - Dependency Injection Tests', () => {
             expect(mockLogger.info).toHaveBeenCalledWith({}, 'RAG system test completed');
         });
 
-        it('should handle RAG system test errors', async () => {
-            const error = new Error('Test failed');
+        it('should handle RAG system test errors by throwing', async () => {
+            const error = new Error('OpenAI API failed');
             mockOpenAI.generateEmbedding.mockRejectedValue(error);
-            mockVectorDb.searchVectors.mockResolvedValue([]);
 
-            const result = await service.testRAGSystem();
-
-            // The test should still succeed with fallback embeddings
-            expect(result).toEqual({
-                cvContext: { context: '', sources: [] },
-                projectContext: { context: '', sources: [] },
-                finalContext: { context: '', sources: [] }
-            });
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to generate OpenAI query embedding:', error);
+            await expect(service.testRAGSystem()).rejects.toThrow('OpenAI API failed');
+            // Error is thrown before logging, so no error log is called
         });
     });
 
     describe('Error Handling and Edge Cases', () => {
-        it('should handle network errors gracefully', async () => {
+        it('should handle network errors by throwing', async () => {
             const error = new Error('Network error');
             mockOpenAI.generateEmbedding.mockRejectedValue(error);
 
-            const result = await service.retrieveCVContext('test');
-
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to generate OpenAI query embedding:', error);
-            expect(mockLogger.warn).toHaveBeenCalledWith('Falling back to mock query embedding');
+            await expect(service.retrieveCVContext('test')).rejects.toThrow('Network error');
+            // Error is thrown before logging, so no error log is called
         });
 
         it('should handle malformed search results', async () => {
@@ -523,10 +505,9 @@ describe('RAG Service - Dependency Injection Tests', () => {
             const error = new Error('Test error');
             mockOpenAI.generateEmbedding.mockRejectedValue(error);
 
-            await service.retrieveCVContext('test');
+            await expect(service.retrieveCVContext('test')).rejects.toThrow();
 
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to generate OpenAI query embedding:', error);
-            expect(mockLogger.warn).toHaveBeenCalledWith('Falling back to mock query embedding');
+            // Error is thrown before logging, so no error log is called
         });
     });
 
