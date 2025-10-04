@@ -222,9 +222,9 @@ export class DocumentProcessorService {
             return 'job_description';
         } else if (lowerFilename.includes('case') || lowerFilename.includes('brief')) {
             return 'case_brief';
-        } else if (lowerFilename.includes('cv') || lowerFilename.includes('rubric')) {
+        } else if (lowerFilename.includes('cv')) {
             return 'cv_rubric';
-        } else if (lowerFilename.includes('project') || lowerFilename.includes('rubric')) {
+        } else if (lowerFilename.includes('project')) {
             return 'project_rubric';
         } else {
             return 'unknown';
