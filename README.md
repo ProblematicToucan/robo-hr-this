@@ -51,7 +51,7 @@ The system uses a microservices architecture with the following components:
 ### 1. Clone and Install
 
 ```bash
-git clone <your-repo>
+git clone https://github.com/ProblematicToucan/robo-hr-this.git
 cd cv-rag
 npm install
 ```
