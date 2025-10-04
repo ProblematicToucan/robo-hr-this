@@ -1,29 +1,7 @@
-import { getVectorDbService } from './vector-db.service';
-import { getOpenAIService } from './openai.service';
+import { getVectorDbService, IVectorDbService } from './vector-db.service';
+import { getOpenAIService, IOpenAIService } from './openai.service';
 import { logger, ILogger } from '../config/logger';
 import { RetryUtil, IRetryUtil } from '../utils/retry.util';
-
-// Interfaces for better testability
-export interface IVectorDbService {
-    searchVectors(queryVector: number[], options?: {
-        limit?: number;
-        filter?: Record<string, any>;
-        scoreThreshold?: number;
-    }): Promise<Array<{
-        id: string;
-        score: number;
-        payload: Record<string, any>;
-    }>>;
-    getCollectionStats(): Promise<{
-        pointsCount: number;
-        segmentsCount: number;
-        status: string;
-    }>;
-}
-
-export interface IOpenAIService {
-    generateEmbedding(text: string): Promise<number[]>;
-}
 
 /**
  * RAG (Retrieval-Augmented Generation) Service with Dependency Injection
@@ -83,10 +61,10 @@ export class RAGService {
 
                 // Format context
                 const context = results
-                    .map(result => result.payload.chunk_text)
+                    .map((result: any) => result.payload.chunk_text)
                     .join('\n\n');
 
-                const sources = results.map(result => ({
+                const sources = results.map((result: any) => ({
                     document_type: result.payload.document_type,
                     chunk_text: result.payload.chunk_text,
                     score: result.score
@@ -141,10 +119,10 @@ export class RAGService {
 
                 // Format context
                 const context = results
-                    .map(result => result.payload.chunk_text)
+                    .map((result: any) => result.payload.chunk_text)
                     .join('\n\n');
 
-                const sources = results.map(result => ({
+                const sources = results.map((result: any) => ({
                     document_type: result.payload.document_type,
                     chunk_text: result.payload.chunk_text,
                     score: result.score
@@ -191,10 +169,10 @@ export class RAGService {
 
                 // Format context
                 const context = results
-                    .map(result => result.payload.chunk_text)
+                    .map((result: any) => result.payload.chunk_text)
                     .join('\n\n');
 
-                const sources = results.map(result => ({
+                const sources = results.map((result: any) => ({
                     document_type: result.payload.document_type,
                     chunk_text: result.payload.chunk_text,
                     score: result.score

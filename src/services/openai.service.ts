@@ -29,13 +29,25 @@ export interface IOpenAIClient {
     };
 }
 
+export interface IOpenAIService {
+    generateEmbeddings(texts: string[]): Promise<number[][]>;
+    generateEmbedding(text: string): Promise<number[]>;
+    generateCompletion(messages: Array<{ role: string, content: string }>, options?: {
+        temperature?: number;
+        max_tokens?: number;
+        response_format?: { type: 'json_object' };
+    }): Promise<string>;
+    generateStructuredCompletion(messages: Array<{ role: string, content: string }>, schema: any): Promise<any>;
+    testConnection(): Promise<boolean>;
+}
+
 /**
  * OpenAI Service with Dependency Injection
  * 
  * Handles OpenAI API calls for embeddings and LLM operations.
  * Provides methods for generating embeddings and LLM completions.
  */
-export class OpenAIService {
+export class OpenAIService implements IOpenAIService {
     constructor(
         private client: IOpenAIClient,
         private retryUtil: IRetryUtil,

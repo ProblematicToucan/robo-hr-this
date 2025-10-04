@@ -12,13 +12,36 @@ export interface IQdrantClient {
     delete(collectionName: string, params: any): Promise<any>;
 }
 
+export interface IVectorDbService {
+    upsertPoints(points: Array<{
+        id: string;
+        vector: number[];
+        payload: Record<string, any>;
+    }>): Promise<void>;
+    deletePoints(filter: Record<string, any>): Promise<void>;
+    searchVectors(queryVector: number[], options?: {
+        limit?: number;
+        filter?: Record<string, any>;
+        scoreThreshold?: number;
+    }): Promise<Array<{
+        id: string;
+        score: number;
+        payload: Record<string, any>;
+    }>>;
+    getCollectionStats(): Promise<{
+        pointsCount: number;
+        segmentsCount: number;
+        status: string;
+    }>;
+}
+
 /**
  * Vector Database Service with Dependency Injection
  * 
  * Handles all Qdrant operations for vector storage and retrieval.
  * Provides methods for collection management, point operations, and search.
  */
-export class VectorDbService {
+export class VectorDbService implements IVectorDbService {
     constructor(
         private client: IQdrantClient,
         private retryUtil: IRetryUtil,

@@ -5,53 +5,11 @@ import pdf from 'pdf-parse';
 import { AppDataSource } from '../db/data-source';
 import { Document } from '../db/entities/document.entity';
 import { Embedding } from '../db/entities/embedding.entity';
-import { getVectorDbService } from './vector-db.service';
-import { getOpenAIService } from './openai.service';
+import { getVectorDbService, IVectorDbService } from './vector-db.service';
+import { getOpenAIService, IOpenAIService } from './openai.service';
 import { logger, ILogger } from '../config/logger';
 import { RetryUtil, IRetryUtil } from '../utils/retry.util';
-
-// Interfaces for better testability
-export interface IVectorDbService {
-    upsertPoints(points: Array<{
-        id: string;
-        vector: number[];
-        payload: Record<string, any>;
-    }>): Promise<void>;
-    deletePoints(filter: Record<string, any>): Promise<void>;
-    getCollectionStats(): Promise<{
-        pointsCount: number;
-        segmentsCount: number;
-        status: string;
-    }>;
-}
-
-export interface IOpenAIService {
-    generateEmbeddings(texts: string[]): Promise<number[][]>;
-}
-
-export interface IRepository<T> {
-    findOne(options: any): Promise<T | null>;
-    find(options?: any): Promise<T[]>;
-    save(entity: any, data?: any): Promise<T>;
-    delete(entity: any, criteria?: any): Promise<void>;
-}
-
-export interface IQueryRunner {
-    connect(): Promise<void>;
-    startTransaction(): Promise<void>;
-    commitTransaction(): Promise<void>;
-    rollbackTransaction(): Promise<void>;
-    release(): Promise<void>;
-    manager: {
-        save(entity: any, data: any): Promise<any>;
-        delete(entity: any, criteria: any): Promise<void>;
-    };
-}
-
-export interface IDataSource {
-    createQueryRunner(): IQueryRunner;
-    getRepository<T>(entity: any): IRepository<T>;
-}
+import { IDataSource, IRepository, IQueryRunner } from '../db/interfaces';
 
 /**
  * Document Processor Service with Dependency Injection
