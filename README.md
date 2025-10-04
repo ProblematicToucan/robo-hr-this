@@ -58,34 +58,22 @@ npm install
 
 ### 2. Environment Setup
 
-Create a `.env` file in the root directory:
+Copy the example environment file and configure your settings:
+
+```bash
+cp .env.example .env
+```
+
+Then edit the `.env` file and update the following key:
 
 ```env
-# Database
-DATABASE_URL=postgres://pguser:pgpassword@localhost:5432/rag
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# Vector Database
-VECTOR_DB_URL=http://localhost:6333
-
-# OpenAI
-OPENAI_API_KEY=your_openai_api_key_here
-
-# Storage
-STORAGE_DIR=./storage
-
-# RAG Configuration
-RAG_TOP_K=6
-EMBEDDING_MODEL=text-embedding-3-small
-LLM_MODEL=gpt-4o-mini
-LLM_TEMPERATURE=0.1
-
-# Queue Configuration
-EVAL_MAX_ATTEMPTS=5
-EVAL_BACKOFF_MS=1000
+# OpenAI - REQUIRED: Get your API key from https://platform.openai.com/api-keys
+OPENAI_API_KEY=your_actual_openai_api_key_here
 ```
+
+**Important:** You must replace `your_actual_openai_api_key_here` with your real OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys).
+
+All other environment variables are pre-configured with sensible defaults for local development.
 
 ### 3. Start Infrastructure
 
