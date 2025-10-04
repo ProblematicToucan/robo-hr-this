@@ -2,35 +2,91 @@ import OpenAI from 'openai';
 import { logger } from '../config/logger';
 import { RetryUtil } from '../utils/retry.util';
 
+// Interfaces for better testability
+export interface IOpenAIClient {
+    embeddings: {
+        create: (params: {
+            model: string;
+            input: string[];
+            encoding_format: string;
+        }) => Promise<{
+            data: Array<{ embedding: number[] }>;
+        }>;
+    };
+    chat: {
+        completions: {
+            create: (params: {
+                model: string;
+                messages: Array<{ role: string; content: string }>;
+                temperature: number;
+                max_tokens: number;
+                response_format?: { type: 'json_object' };
+            }) => Promise<{
+                choices: Array<{ message: { content: string | null } }>;
+                usage: { total_tokens: number };
+            }>;
+        };
+    };
+}
+
+export interface IRetryUtil {
+    executeWithRetry<T>(
+        operation: () => Promise<T>,
+        options: {
+            maxAttempts?: number;
+            baseDelay?: number;
+            maxDelay?: number;
+            operationName?: string;
+        }
+    ): Promise<T>;
+}
+
+export interface ILogger {
+    info(data: any, message: string): void;
+    error(message: string, error?: any): void;
+}
+
 /**
- * OpenAI Service
+ * OpenAI Service with Dependency Injection
  * 
  * Handles OpenAI API calls for embeddings and LLM operations.
  * Provides methods for generating embeddings and LLM completions.
  */
 export class OpenAIService {
-    private client: OpenAI;
-    private embeddingModel: string;
-    private llmModel: string;
-    private temperature: number;
+    constructor(
+        private client: IOpenAIClient,
+        private retryUtil: IRetryUtil,
+        private logger: ILogger,
+        private embeddingModel: string = 'text-embedding-3-small',
+        private llmModel: string = 'gpt-4o-mini',
+        private temperature: number = 0.1
+    ) { }
 
-    constructor() {
-        this.client = new OpenAI({
+    /**
+     * Factory method for production use
+     */
+    static create(): OpenAIService {
+        const client = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY
         });
 
-        this.embeddingModel = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
-        this.llmModel = process.env.LLM_MODEL || 'gpt-4o-mini';
-        this.temperature = parseFloat(process.env.LLM_TEMPERATURE || '0.1');
+        return new OpenAIService(
+            client as any, // Cast to interface
+            RetryUtil,
+            logger,
+            process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+            process.env.LLM_MODEL || 'gpt-4o-mini',
+            parseFloat(process.env.LLM_TEMPERATURE || '0.1')
+        );
     }
 
     /**
      * Generate embeddings for text
      */
     async generateEmbeddings(texts: string[]): Promise<number[][]> {
-        return await RetryUtil.executeWithRetry(
+        return await this.retryUtil.executeWithRetry(
             async () => {
-                logger.info({
+                this.logger.info({
                     textsCount: texts.length,
                     model: this.embeddingModel
                 }, 'Generating OpenAI embeddings');
@@ -43,7 +99,7 @@ export class OpenAIService {
 
                 const embeddings = response.data.map(item => item.embedding);
 
-                logger.info({
+                this.logger.info({
                     embeddingsCount: embeddings.length,
                     dimension: embeddings[0]?.length || 0
                 }, 'OpenAI embeddings generated successfully');
@@ -67,7 +123,7 @@ export class OpenAIService {
             const embeddings = await this.generateEmbeddings([text]);
             return embeddings[0];
         } catch (error: any) {
-            logger.error('Failed to generate single OpenAI embedding:', error);
+            this.logger.error('Failed to generate single OpenAI embedding:', error);
             throw new Error(`OpenAI single embedding generation failed: ${error.message}`);
         }
     }
@@ -80,9 +136,9 @@ export class OpenAIService {
         max_tokens?: number;
         response_format?: { type: 'json_object' };
     }): Promise<string> {
-        return await RetryUtil.executeWithRetry(
+        return await this.retryUtil.executeWithRetry(
             async () => {
-                logger.info({
+                this.logger.info({
                     messagesCount: messages.length,
                     model: this.llmModel,
                     temperature: options?.temperature || this.temperature
@@ -101,7 +157,7 @@ export class OpenAIService {
                     throw new Error('No content returned from OpenAI');
                 }
 
-                logger.info({
+                this.logger.info({
                     tokensUsed: response.usage?.total_tokens || 0,
                     contentLength: content.length
                 }, 'OpenAI completion generated successfully');
@@ -129,14 +185,14 @@ export class OpenAIService {
             // Parse JSON response
             const parsed = JSON.parse(content);
 
-            logger.info({
+            this.logger.info({
                 parsedKeys: Object.keys(parsed)
             }, 'Structured completion parsed successfully');
 
             return parsed;
 
         } catch (error: any) {
-            logger.error('Failed to generate structured completion:', error);
+            this.logger.error('Failed to generate structured completion:', error);
             throw new Error(`Structured completion generation failed: ${error.message}`);
         }
     }
@@ -147,10 +203,10 @@ export class OpenAIService {
     async testConnection(): Promise<boolean> {
         try {
             await this.generateEmbedding('test');
-            logger.info('OpenAI connection test successful');
+            this.logger.info({}, 'OpenAI connection test successful');
             return true;
         } catch (error: any) {
-            logger.error('OpenAI connection test failed:', error);
+            this.logger.error('OpenAI connection test failed:', error);
             return false;
         }
     }
@@ -161,7 +217,7 @@ let openaiService: OpenAIService | null = null;
 
 export function getOpenAIService(): OpenAIService {
     if (!openaiService) {
-        openaiService = new OpenAIService();
+        openaiService = OpenAIService.create();
     }
     return openaiService;
 }
