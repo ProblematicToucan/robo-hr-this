@@ -127,6 +127,8 @@ async function startServer() {
             logger.info("  Queue system: BullMQ with Redis");
             logger.info("  Vector database: Qdrant");
             logger.info("  Database: PostgreSQL with TypeORM");
+            logger.info("  LLM: OpenAI GPT-4o-mini with text-embedding-3-small");
+            logger.info("  Evaluation: 3-stage LLM pipeline (S1: CV, S2: Project, S3: Synthesis)");
         });
     } catch (error: any) {
         logger.error("Failed to start server:", error);
