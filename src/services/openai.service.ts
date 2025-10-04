@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { logger } from '../config/logger';
+import { RetryUtil } from '../utils/retry.util';
 
 /**
  * OpenAI Service
@@ -27,31 +28,35 @@ export class OpenAIService {
      * Generate embeddings for text
      */
     async generateEmbeddings(texts: string[]): Promise<number[][]> {
-        try {
-            logger.info({
-                textsCount: texts.length,
-                model: this.embeddingModel
-            }, 'Generating OpenAI embeddings');
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                logger.info({
+                    textsCount: texts.length,
+                    model: this.embeddingModel
+                }, 'Generating OpenAI embeddings');
 
-            const response = await this.client.embeddings.create({
-                model: this.embeddingModel,
-                input: texts,
-                encoding_format: 'float'
-            });
+                const response = await this.client.embeddings.create({
+                    model: this.embeddingModel,
+                    input: texts,
+                    encoding_format: 'float'
+                });
 
-            const embeddings = response.data.map(item => item.embedding);
+                const embeddings = response.data.map(item => item.embedding);
 
-            logger.info({
-                embeddingsCount: embeddings.length,
-                dimension: embeddings[0]?.length || 0
-            }, 'OpenAI embeddings generated successfully');
+                logger.info({
+                    embeddingsCount: embeddings.length,
+                    dimension: embeddings[0]?.length || 0
+                }, 'OpenAI embeddings generated successfully');
 
-            return embeddings;
-
-        } catch (error: any) {
-            logger.error('Failed to generate OpenAI embeddings:', error);
-            throw new Error(`OpenAI embedding generation failed: ${error.message}`);
-        }
+                return embeddings;
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'OpenAI embeddings generation'
+            }
+        );
     }
 
     /**
@@ -75,37 +80,41 @@ export class OpenAIService {
         max_tokens?: number;
         response_format?: { type: 'json_object' };
     }): Promise<string> {
-        try {
-            logger.info({
-                messagesCount: messages.length,
-                model: this.llmModel,
-                temperature: options?.temperature || this.temperature
-            }, 'Generating OpenAI completion');
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                logger.info({
+                    messagesCount: messages.length,
+                    model: this.llmModel,
+                    temperature: options?.temperature || this.temperature
+                }, 'Generating OpenAI completion');
 
-            const response = await this.client.chat.completions.create({
-                model: this.llmModel,
-                messages: messages as any,
-                temperature: options?.temperature || this.temperature,
-                max_tokens: options?.max_tokens || 2000,
-                response_format: options?.response_format
-            });
+                const response = await this.client.chat.completions.create({
+                    model: this.llmModel,
+                    messages: messages as any,
+                    temperature: options?.temperature || this.temperature,
+                    max_tokens: options?.max_tokens || 2000,
+                    response_format: options?.response_format
+                });
 
-            const content = response.choices[0]?.message?.content;
-            if (!content) {
-                throw new Error('No content returned from OpenAI');
+                const content = response.choices[0]?.message?.content;
+                if (!content) {
+                    throw new Error('No content returned from OpenAI');
+                }
+
+                logger.info({
+                    tokensUsed: response.usage?.total_tokens || 0,
+                    contentLength: content.length
+                }, 'OpenAI completion generated successfully');
+
+                return content;
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'OpenAI completion generation'
             }
-
-            logger.info({
-                tokensUsed: response.usage?.total_tokens || 0,
-                contentLength: content.length
-            }, 'OpenAI completion generated successfully');
-
-            return content;
-
-        } catch (error: any) {
-            logger.error('Failed to generate OpenAI completion:', error);
-            throw new Error(`OpenAI completion generation failed: ${error.message}`);
-        }
+        );
     }
 
     /**

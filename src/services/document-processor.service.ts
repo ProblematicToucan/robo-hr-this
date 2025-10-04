@@ -8,6 +8,7 @@ import { Embedding } from '../db/entities/embedding.entity';
 import { getVectorDbService } from './vector-db.service';
 import { getOpenAIService } from './openai.service';
 import { logger } from '../config/logger';
+import { RetryUtil } from '../utils/retry.util';
 
 /**
  * Document Processor Service
@@ -89,13 +90,23 @@ export class DocumentProcessorService {
                 throw new Error('PDF contains no extractable text');
             }
 
-            // Create document record within transaction
-            const document = await queryRunner.manager.save(Document, {
-                type: documentType,
-                version,
-                storage_uri: filePath,
-                content_hash: contentHash
-            });
+            // Create document record within transaction with retry
+            const document = await RetryUtil.executeWithRetry(
+                async () => {
+                    return await queryRunner.manager.save(Document, {
+                        type: documentType,
+                        version,
+                        storage_uri: filePath,
+                        content_hash: contentHash
+                    });
+                },
+                {
+                    maxAttempts: 3,
+                    baseDelay: 500,
+                    maxDelay: 2000,
+                    operationName: 'Save document to database'
+                }
+            );
 
             // Chunk text
             const chunks = this.chunkText(text, 512, 64); // 512 tokens with 64 overlap

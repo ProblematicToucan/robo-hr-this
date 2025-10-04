@@ -1,6 +1,7 @@
 import { getVectorDbService } from './vector-db.service';
 import { getOpenAIService } from './openai.service';
 import { logger } from '../config/logger';
+import { RetryUtil } from '../utils/retry.util';
 
 /**
  * RAG (Retrieval-Augmented Generation) Service
@@ -23,47 +24,51 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        try {
-            // Generate deterministic query embedding
-            const queryEmbedding = await this.generateQueryEmbedding(query);
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                // Generate deterministic query embedding
+                const queryEmbedding = await this.generateQueryEmbedding(query);
 
-            // Search for relevant documents
-            const results = await this.vectorDb.searchVectors(queryEmbedding, {
-                limit: topK,
-                filter: {
-                    must: [
-                        {
-                            key: 'document_type',
-                            match: { any: ['job_description', 'cv_rubric'] }
-                        }
-                    ]
-                },
-                scoreThreshold: 0.7
-            });
+                // Search for relevant documents
+                const results = await this.vectorDb.searchVectors(queryEmbedding, {
+                    limit: topK,
+                    filter: {
+                        must: [
+                            {
+                                key: 'document_type',
+                                match: { any: ['job_description', 'cv_rubric'] }
+                            }
+                        ]
+                    },
+                    scoreThreshold: 0.7
+                });
 
-            // Format context
-            const context = results
-                .map(result => result.payload.chunk_text)
-                .join('\n\n');
+                // Format context
+                const context = results
+                    .map(result => result.payload.chunk_text)
+                    .join('\n\n');
 
-            const sources = results.map(result => ({
-                document_type: result.payload.document_type,
-                chunk_text: result.payload.chunk_text,
-                score: result.score
-            }));
+                const sources = results.map(result => ({
+                    document_type: result.payload.document_type,
+                    chunk_text: result.payload.chunk_text,
+                    score: result.score
+                }));
 
-            logger.info({
-                query: query.substring(0, 100),
-                resultsCount: results.length,
-                contextLength: context.length
-            }, 'CV context retrieved');
+                logger.info({
+                    query: query.substring(0, 100),
+                    resultsCount: results.length,
+                    contextLength: context.length
+                }, 'CV context retrieved');
 
-            return { context, sources };
-
-        } catch (error: any) {
-            logger.error('Failed to retrieve CV context:', error);
-            throw new Error(`CV context retrieval failed: ${error.message}`);
-        }
+                return { context, sources };
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'CV context retrieval'
+            }
+        );
     }
 
     /**
@@ -77,47 +82,51 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        try {
-            // Generate deterministic query embedding
-            const queryEmbedding = await this.generateQueryEmbedding(query);
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                // Generate deterministic query embedding
+                const queryEmbedding = await this.generateQueryEmbedding(query);
 
-            // Search for relevant documents
-            const results = await this.vectorDb.searchVectors(queryEmbedding, {
-                limit: topK,
-                filter: {
-                    must: [
-                        {
-                            key: 'document_type',
-                            match: { any: ['case_brief', 'project_rubric'] }
-                        }
-                    ]
-                },
-                scoreThreshold: 0.7
-            });
+                // Search for relevant documents
+                const results = await this.vectorDb.searchVectors(queryEmbedding, {
+                    limit: topK,
+                    filter: {
+                        must: [
+                            {
+                                key: 'document_type',
+                                match: { any: ['case_brief', 'project_rubric'] }
+                            }
+                        ]
+                    },
+                    scoreThreshold: 0.7
+                });
 
-            // Format context
-            const context = results
-                .map(result => result.payload.chunk_text)
-                .join('\n\n');
+                // Format context
+                const context = results
+                    .map(result => result.payload.chunk_text)
+                    .join('\n\n');
 
-            const sources = results.map(result => ({
-                document_type: result.payload.document_type,
-                chunk_text: result.payload.chunk_text,
-                score: result.score
-            }));
+                const sources = results.map(result => ({
+                    document_type: result.payload.document_type,
+                    chunk_text: result.payload.chunk_text,
+                    score: result.score
+                }));
 
-            logger.info({
-                query: query.substring(0, 100),
-                resultsCount: results.length,
-                contextLength: context.length
-            }, 'Project context retrieved');
+                logger.info({
+                    query: query.substring(0, 100),
+                    resultsCount: results.length,
+                    contextLength: context.length
+                }, 'Project context retrieved');
 
-            return { context, sources };
-
-        } catch (error: any) {
-            logger.error('Failed to retrieve project context:', error);
-            throw new Error(`Project context retrieval failed: ${error.message}`);
-        }
+                return { context, sources };
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'Project context retrieval'
+            }
+        );
     }
 
     /**
@@ -131,39 +140,43 @@ export class RAGService {
             score: number;
         }>;
     }> {
-        try {
-            // Generate deterministic query embedding
-            const queryEmbedding = await this.generateQueryEmbedding(query);
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                // Generate deterministic query embedding
+                const queryEmbedding = await this.generateQueryEmbedding(query);
 
-            // Search for relevant documents (any type)
-            const results = await this.vectorDb.searchVectors(queryEmbedding, {
-                limit: topK,
-                scoreThreshold: 0.7
-            });
+                // Search for relevant documents (any type)
+                const results = await this.vectorDb.searchVectors(queryEmbedding, {
+                    limit: topK,
+                    scoreThreshold: 0.7
+                });
 
-            // Format context
-            const context = results
-                .map(result => result.payload.chunk_text)
-                .join('\n\n');
+                // Format context
+                const context = results
+                    .map(result => result.payload.chunk_text)
+                    .join('\n\n');
 
-            const sources = results.map(result => ({
-                document_type: result.payload.document_type,
-                chunk_text: result.payload.chunk_text,
-                score: result.score
-            }));
+                const sources = results.map(result => ({
+                    document_type: result.payload.document_type,
+                    chunk_text: result.payload.chunk_text,
+                    score: result.score
+                }));
 
-            logger.info({
-                query: query.substring(0, 100),
-                resultsCount: results.length,
-                contextLength: context.length
-            }, 'Final context retrieved');
+                logger.info({
+                    query: query.substring(0, 100),
+                    resultsCount: results.length,
+                    contextLength: context.length
+                }, 'Final context retrieved');
 
-            return { context, sources };
-
-        } catch (error: any) {
-            logger.error('Failed to retrieve final context:', error);
-            throw new Error(`Final context retrieval failed: ${error.message}`);
-        }
+                return { context, sources };
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'Final context retrieval'
+            }
+        );
     }
 
     /**

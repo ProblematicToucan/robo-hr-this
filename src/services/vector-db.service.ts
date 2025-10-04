@@ -1,5 +1,6 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { logger } from '../config/logger';
+import { RetryUtil } from '../utils/retry.util';
 
 /**
  * Vector Database Service
@@ -70,31 +71,35 @@ export class VectorDbService {
         vector: number[];
         payload: Record<string, any>;
     }>): Promise<void> {
-        try {
-            // Convert string IDs to UUIDs for Qdrant compatibility
-            const qdrantPoints = points.map(point => ({
-                id: this.generateUUID(point.id),
-                vector: point.vector,
-                payload: {
-                    ...point.payload,
-                    original_id: point.id // Keep original ID in payload
-                }
-            }));
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                // Convert string IDs to UUIDs for Qdrant compatibility
+                const qdrantPoints = points.map(point => ({
+                    id: this.generateUUID(point.id),
+                    vector: point.vector,
+                    payload: {
+                        ...point.payload,
+                        original_id: point.id // Keep original ID in payload
+                    }
+                }));
 
-            await this.client.upsert(this.collectionName, {
-                wait: true,
-                points: qdrantPoints
-            });
+                await this.client.upsert(this.collectionName, {
+                    wait: true,
+                    points: qdrantPoints
+                });
 
-            logger.info({
-                collection: this.collectionName,
-                pointsCount: points.length
-            }, 'Points upserted successfully');
-
-        } catch (error: any) {
-            logger.error('Failed to upsert points:', error);
-            throw new Error(`Failed to upsert points: ${error.message}`);
-        }
+                logger.info({
+                    collection: this.collectionName,
+                    pointsCount: points.length
+                }, 'Points upserted successfully');
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'Qdrant upsert points'
+            }
+        );
     }
 
     /**
@@ -135,61 +140,69 @@ export class VectorDbService {
         score: number;
         payload: Record<string, any>;
     }>> {
-        try {
-            const { limit = 6, filter, scoreThreshold = 0.7 } = options;
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                const { limit = 6, filter, scoreThreshold = 0.7 } = options;
 
-            const searchResult = await this.client.search(this.collectionName, {
-                vector: queryVector,
-                limit,
-                filter,
-                score_threshold: scoreThreshold,
-                with_payload: true,
-                with_vector: false
-            });
+                const searchResult = await this.client.search(this.collectionName, {
+                    vector: queryVector,
+                    limit,
+                    filter,
+                    score_threshold: scoreThreshold,
+                    with_payload: true,
+                    with_vector: false
+                });
 
-            const results = searchResult.map(point => ({
-                id: (point.payload?.original_id as string) || (point.id as string),
-                score: point.score,
-                payload: point.payload || {}
-            }));
+                const results = searchResult.map(point => ({
+                    id: (point.payload?.original_id as string) || (point.id as string),
+                    score: point.score,
+                    payload: point.payload || {}
+                }));
 
-            logger.info({
-                collection: this.collectionName,
-                queryVectorLength: queryVector.length,
-                resultsCount: results.length,
-                limit
-            }, 'Vector search completed');
+                logger.info({
+                    collection: this.collectionName,
+                    queryVectorLength: queryVector.length,
+                    resultsCount: results.length,
+                    limit
+                }, 'Vector search completed');
 
-            return results;
-
-        } catch (error: any) {
-            logger.error('Failed to search vectors:', error);
-            throw new Error(`Vector search failed: ${error.message}`);
-        }
+                return results;
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'Qdrant vector search'
+            }
+        );
     }
 
     /**
      * Delete points by filter
      */
     async deletePoints(filter: Record<string, any>): Promise<void> {
-        try {
-            // Convert document_id filter to use original_id in payload
-            const qdrantFilter = this.convertFilterForQdrant(filter);
+        return await RetryUtil.executeWithRetry(
+            async () => {
+                // Convert document_id filter to use original_id in payload
+                const qdrantFilter = this.convertFilterForQdrant(filter);
 
-            await this.client.delete(this.collectionName, {
-                wait: true,
-                filter: qdrantFilter
-            });
+                await this.client.delete(this.collectionName, {
+                    wait: true,
+                    filter: qdrantFilter
+                });
 
-            logger.info({
-                collection: this.collectionName,
-                filter
-            }, 'Points deleted successfully');
-
-        } catch (error: any) {
-            logger.error('Failed to delete points:', error);
-            throw new Error(`Failed to delete points: ${error.message}`);
-        }
+                logger.info({
+                    collection: this.collectionName,
+                    filter
+                }, 'Points deleted successfully');
+            },
+            {
+                maxAttempts: 3,
+                baseDelay: 1000,
+                maxDelay: 5000,
+                operationName: 'Qdrant delete points'
+            }
+        );
     }
 
     /**
