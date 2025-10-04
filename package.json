@@ -6,6 +6,11 @@
     "dev": "nodemon --watch 'src/**/*.ts' --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch",
     "typeorm": "typeorm-ts-node-commonjs -d src/db/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs -d src/db/data-source.ts migration:generate",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
@@ -38,8 +43,10 @@
     "@types/multer": "^2.0",
     "@types/node": "^24.6.2",
     "@types/pdf-parse": "^1.1.4",
+    "@vitest/ui": "^3.2.4",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }
