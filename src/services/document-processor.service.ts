@@ -185,10 +185,9 @@ export class DocumentProcessorService {
      * TODO: Replace with real OpenAI embedding generation
      */
     private async generateEmbeddings(chunks: string[]): Promise<Array<{ vector: number[] }>> {
-        // For now, generate mock embeddings
-        // In production, this would call OpenAI's embedding API
-        const embeddings = chunks.map(() => ({
-            vector: Array.from({ length: 1536 }, () => Math.random() * 2 - 1) // Mock 1536-dim vector
+        // Generate deterministic mock embeddings based on content
+        const embeddings = chunks.map((chunk, index) => ({
+            vector: this.generateDeterministicEmbedding(chunk, index)
         }));
 
         logger.info({
@@ -197,6 +196,33 @@ export class DocumentProcessorService {
         }, 'Mock embeddings generated');
 
         return embeddings;
+    }
+
+    /**
+     * Generate deterministic embedding based on content
+     */
+    private generateDeterministicEmbedding(text: string, index: number): number[] {
+        // Create a simple hash from text content
+        let hash = 0;
+        for (let i = 0; i < text.length; i++) {
+            const char = text.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+
+        // Add index to make each chunk unique
+        hash += index * 1000;
+
+        // Generate deterministic vector based on hash
+        const vector = [];
+        for (let i = 0; i < 1536; i++) {
+            // Use hash + i as seed for deterministic "random" values
+            const seed = (hash + i) % 2147483647;
+            const normalized = (Math.sin(seed) + 1) / 2; // Normalize to 0-1
+            vector.push(normalized * 2 - 1); // Scale to -1 to 1
+        }
+
+        return vector;
     }
 
     /**

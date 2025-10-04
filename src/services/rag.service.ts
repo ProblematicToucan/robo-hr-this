@@ -22,9 +22,8 @@ export class RAGService {
         }>;
     }> {
         try {
-            // TODO: Generate query embedding using OpenAI
-            // For now, use mock embedding
-            const queryEmbedding = Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
+            // Generate deterministic query embedding
+            const queryEmbedding = await this.generateQueryEmbedding(query);
 
             // Search for relevant documents
             const results = await this.vectorDb.searchVectors(queryEmbedding, {
@@ -77,9 +76,8 @@ export class RAGService {
         }>;
     }> {
         try {
-            // TODO: Generate query embedding using OpenAI
-            // For now, use mock embedding
-            const queryEmbedding = Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
+            // Generate deterministic query embedding
+            const queryEmbedding = await this.generateQueryEmbedding(query);
 
             // Search for relevant documents
             const results = await this.vectorDb.searchVectors(queryEmbedding, {
@@ -132,9 +130,8 @@ export class RAGService {
         }>;
     }> {
         try {
-            // TODO: Generate query embedding using OpenAI
-            // For now, use mock embedding
-            const queryEmbedding = Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
+            // Generate deterministic query embedding
+            const queryEmbedding = await this.generateQueryEmbedding(query);
 
             // Search for relevant documents (any type)
             const results = await this.vectorDb.searchVectors(queryEmbedding, {
@@ -180,8 +177,35 @@ export class RAGService {
         // });
         // return response.data[0].embedding;
 
-        // For now, return mock embedding
-        return Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
+        // For now, return deterministic mock embedding based on query content
+        return this.generateDeterministicEmbedding(query, 0);
+    }
+
+    /**
+     * Generate deterministic embedding based on content
+     */
+    private generateDeterministicEmbedding(text: string, index: number): number[] {
+        // Create a simple hash from text content
+        let hash = 0;
+        for (let i = 0; i < text.length; i++) {
+            const char = text.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+
+        // Add index to make each chunk unique
+        hash += index * 1000;
+
+        // Generate deterministic vector based on hash
+        const vector = [];
+        for (let i = 0; i < 1536; i++) {
+            // Use hash + i as seed for deterministic "random" values
+            const seed = (hash + i) % 2147483647;
+            const normalized = (Math.sin(seed) + 1) / 2; // Normalize to 0-1
+            vector.push(normalized * 2 - 1); // Scale to -1 to 1
+        }
+
+        return vector;
     }
 
     /**
