@@ -196,4 +196,33 @@ router.get('/test', async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * POST /ingest/cleanup
+ * 
+ * Clean up orphaned records (documents without corresponding vectors).
+ */
+router.post('/cleanup', async (req: Request, res: Response) => {
+    try {
+        const documentProcessor = getDocumentProcessorService();
+        const cleanupResult = await documentProcessor.cleanupOrphanedRecords();
+
+        logger.info({
+            cleanupResult
+        }, 'Orphaned records cleanup completed');
+
+        res.json({
+            success: true,
+            message: 'Orphaned records cleanup completed',
+            result: cleanupResult
+        });
+
+    } catch (error: any) {
+        logger.error('Cleanup failed:', error);
+        res.status(500).json({
+            error: 'Cleanup failed',
+            message: error.message
+        });
+    }
+});
+
 export { router as ingestRoutes };

@@ -22,6 +22,11 @@ export class DocumentProcessorService {
      * Process a PDF document and store embeddings
      */
     async processDocument(filePath: string, documentType: string, version: string = '1.0'): Promise<Document> {
+        // Start a database transaction
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
         try {
             logger.info({
                 filePath,
@@ -38,8 +43,8 @@ export class DocumentProcessorService {
                 throw new Error('PDF contains no extractable text');
             }
 
-            // Create document record
-            const document = await this.documentRepository.save({
+            // Create document record within transaction
+            const document = await queryRunner.manager.save(Document, {
                 type: documentType,
                 version,
                 storage_uri: filePath
@@ -51,7 +56,7 @@ export class DocumentProcessorService {
             // Generate embeddings for each chunk
             const embeddings = await this.generateEmbeddings(chunks);
 
-            // Store embeddings in vector database
+            // Prepare points for vector database
             const points = embeddings.map((embedding, index) => ({
                 id: `${document.id}_${index}`,
                 vector: embedding.vector,
@@ -65,9 +70,10 @@ export class DocumentProcessorService {
                 }
             }));
 
+            // Try to store in vector database first
             await this.vectorDb.upsertPoints(points);
 
-            // Store embedding references in PostgreSQL
+            // If vector database succeeds, store embedding references in PostgreSQL
             const embeddingRefs = embeddings.map((embedding, index) => {
                 const ref = new Embedding();
                 ref.docId = document.id;
@@ -82,19 +88,33 @@ export class DocumentProcessorService {
                 return ref;
             });
 
-            await this.embeddingRepository.save(embeddingRefs);
+            await queryRunner.manager.save(Embedding, embeddingRefs);
+
+            // Commit the transaction
+            await queryRunner.commitTransaction();
 
             logger.info({
                 documentId: document.id,
                 chunksCount: chunks.length,
                 embeddingsCount: embeddings.length
-            }, 'Document processing completed');
+            }, 'Document processing completed successfully');
 
             return document;
 
         } catch (error: any) {
-            logger.error('Document processing failed:', error);
+            // Rollback the transaction
+            await queryRunner.rollbackTransaction();
+
+            logger.error({
+                filePath,
+                documentType,
+                error: error.message
+            }, 'Document processing failed, transaction rolled back');
+
             throw new Error(`Document processing failed: ${error.message}`);
+        } finally {
+            // Release the query runner
+            await queryRunner.release();
         }
     }
 
@@ -138,24 +158,51 @@ export class DocumentProcessorService {
      * Process all documents in a directory
      */
     async processDirectory(directoryPath: string): Promise<Document[]> {
+        const documents: Document[] = [];
+        const failedFiles: string[] = [];
+
         try {
-            const documents: Document[] = [];
             const files = fs.readdirSync(directoryPath);
 
             for (const file of files) {
                 if (file.endsWith('.pdf')) {
-                    const filePath = path.join(directoryPath, file);
-                    const documentType = this.inferDocumentType(file);
+                    try {
+                        const filePath = path.join(directoryPath, file);
+                        const documentType = this.inferDocumentType(file);
 
-                    const document = await this.processDocument(filePath, documentType);
-                    documents.push(document);
+                        const document = await this.processDocument(filePath, documentType);
+                        documents.push(document);
+
+                        logger.info({
+                            file,
+                            documentId: document.id,
+                            documentType
+                        }, 'File processed successfully');
+
+                    } catch (error: any) {
+                        failedFiles.push(file);
+                        logger.error({
+                            file,
+                            error: error.message
+                        }, 'Failed to process file');
+
+                        // Continue processing other files
+                    }
                 }
             }
 
             logger.info({
                 directoryPath,
-                processedCount: documents.length
+                processedCount: documents.length,
+                failedCount: failedFiles.length,
+                failedFiles
             }, 'Directory processing completed');
+
+            if (failedFiles.length > 0) {
+                logger.warn({
+                    failedFiles
+                }, 'Some files failed to process');
+            }
 
             return documents;
 
@@ -202,8 +249,13 @@ export class DocumentProcessorService {
      * Delete a document and its embeddings
      */
     async deleteDocument(documentId: number): Promise<void> {
+        // Start a database transaction
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
         try {
-            // Delete from vector database
+            // Delete from vector database first
             await this.vectorDb.deletePoints({
                 must: [
                     {
@@ -213,19 +265,30 @@ export class DocumentProcessorService {
                 ]
             });
 
-            // Delete embedding references
-            await this.embeddingRepository.delete({ docId: documentId });
+            // If vector database deletion succeeds, delete from PostgreSQL
+            await queryRunner.manager.delete(Embedding, { docId: documentId });
+            await queryRunner.manager.delete(Document, documentId);
 
-            // Delete document
-            await this.documentRepository.delete(documentId);
+            // Commit the transaction
+            await queryRunner.commitTransaction();
 
             logger.info({
                 documentId
             }, 'Document deleted successfully');
 
         } catch (error: any) {
-            logger.error('Failed to delete document:', error);
+            // Rollback the transaction
+            await queryRunner.rollbackTransaction();
+
+            logger.error({
+                documentId,
+                error: error.message
+            }, 'Failed to delete document, transaction rolled back');
+
             throw new Error(`Failed to delete document: ${error.message}`);
+        } finally {
+            // Release the query runner
+            await queryRunner.release();
         }
     }
 
@@ -255,6 +318,67 @@ export class DocumentProcessorService {
         } catch (error: any) {
             logger.error('Failed to get document stats:', error);
             throw new Error(`Failed to get document stats: ${error.message}`);
+        }
+    }
+
+    /**
+     * Clean up orphaned records (documents without corresponding vectors)
+     */
+    async cleanupOrphanedRecords(): Promise<{
+        orphanedDocuments: number;
+        orphanedEmbeddings: number;
+        cleanedUp: boolean;
+    }> {
+        try {
+            logger.info('Starting orphaned records cleanup');
+
+            // Get all documents
+            const documents = await this.documentRepository.find();
+            const orphanedDocuments: number[] = [];
+            const orphanedEmbeddings: number[] = [];
+
+            for (const doc of documents) {
+                try {
+                    // Check if document has vectors in Qdrant
+                    const stats = await this.vectorDb.getCollectionStats();
+                    if (stats.pointsCount === 0) {
+                        // No vectors in Qdrant, mark as orphaned
+                        orphanedDocuments.push(doc.id);
+
+                        // Find orphaned embeddings
+                        const embeddings = await this.embeddingRepository.find({
+                            where: { docId: doc.id }
+                        });
+                        orphanedEmbeddings.push(...embeddings.map(e => e.id));
+                    }
+                } catch (error: any) {
+                    logger.warn({
+                        documentId: doc.id,
+                        error: error.message
+                    }, 'Could not verify document vectors');
+                }
+            }
+
+            // Delete orphaned records
+            if (orphanedDocuments.length > 0) {
+                await this.documentRepository.delete(orphanedDocuments);
+                await this.embeddingRepository.delete(orphanedEmbeddings);
+            }
+
+            logger.info({
+                orphanedDocuments: orphanedDocuments.length,
+                orphanedEmbeddings: orphanedEmbeddings.length
+            }, 'Orphaned records cleanup completed');
+
+            return {
+                orphanedDocuments: orphanedDocuments.length,
+                orphanedEmbeddings: orphanedEmbeddings.length,
+                cleanedUp: orphanedDocuments.length > 0
+            };
+
+        } catch (error: any) {
+            logger.error('Failed to cleanup orphaned records:', error);
+            throw new Error(`Failed to cleanup orphaned records: ${error.message}`);
         }
     }
 }
