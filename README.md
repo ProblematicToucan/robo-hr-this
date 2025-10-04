@@ -52,7 +52,7 @@ The system uses a microservices architecture with the following components:
 
 ```bash
 git clone https://github.com/ProblematicToucan/robo-hr-this.git
-cd cv-rag
+cd robo-hr-this
 npm install
 ```
 
