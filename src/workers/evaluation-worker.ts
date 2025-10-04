@@ -181,28 +181,8 @@ Please evaluate this CV against the job requirements. Consider technical skills,
 
         } catch (error: any) {
             logger.error({ jobId, stage: 'S1', error: error.message }, 'CV evaluation failed');
-
-            // Fallback to mock data if LLM fails
-            const s1Payload: CVEvaluationPayload = {
-                parameters: {
-                    technical_skills: 3,
-                    experience_level: 3,
-                    relevant_achievements: 3,
-                    cultural_fit: 3
-                },
-                weighted_average_1_to_5: 3.0,
-                cv_match_rate: 0.6,
-                cv_feedback: `CV evaluation failed: ${error.message}. Using fallback assessment.`
-            };
-
-            await this.artifactRepository.save({
-                jobId,
-                stage: 'S1',
-                payload_json: s1Payload,
-                version: "1.0"
-            });
-
-            logger.warn({ jobId, stage: 'S1' }, 'Using fallback CV evaluation');
+            // No fallback - let error bubble up to trigger job retry
+            throw error;
         }
     }
 
@@ -284,28 +264,8 @@ Please evaluate this project report. Consider correctness of implementation, cod
 
         } catch (error: any) {
             logger.error({ jobId, stage: 'S2', error: error.message }, 'Project evaluation failed');
-
-            // Fallback to mock data if LLM fails
-            const s2Payload: ProjectEvaluationPayload = {
-                parameters: {
-                    correctness: 3,
-                    code_quality: 3,
-                    resilience: 3,
-                    documentation: 3,
-                    creativity: 3
-                },
-                project_score: 3.0,
-                project_feedback: `Project evaluation failed: ${error.message}. Using fallback assessment.`
-            };
-
-            await this.artifactRepository.save({
-                jobId,
-                stage: 'S2',
-                payload_json: s2Payload,
-                version: "1.0"
-            });
-
-            logger.warn({ jobId, stage: 'S2' }, 'Using fallback project evaluation');
+            // No fallback - let error bubble up to trigger job retry
+            throw error;
         }
     }
 
@@ -395,20 +355,8 @@ Please provide a comprehensive final assessment and hiring recommendation based 
 
         } catch (error: any) {
             logger.error({ jobId, stage: 'S3', error: error.message }, 'Final synthesis failed');
-
-            // Fallback to mock data if LLM fails
-            const s3Payload: FinalSynthesisPayload = {
-                overall_summary: `Final synthesis failed: ${error.message}. Using fallback assessment.`
-            };
-
-            await this.artifactRepository.save({
-                jobId,
-                stage: 'S3',
-                payload_json: s3Payload,
-                version: "1.0"
-            });
-
-            logger.warn({ jobId, stage: 'S3' }, 'Using fallback final synthesis');
+            // No fallback - let error bubble up to trigger job retry
+            throw error;
         }
     }
 

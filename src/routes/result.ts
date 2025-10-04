@@ -50,11 +50,13 @@ router.get('/:id', async (req: Request, res: Response) => {
 
         // If job failed, return error information
         if (job.status === 'failed') {
-            return res.json({
+            return res.status(500).json({
                 id: job.id,
                 status: job.status,
+                error: 'Evaluation failed after maximum retry attempts',
                 error_code: job.error_code,
-                attempts: job.attempts
+                attempts: job.attempts,
+                message: 'The evaluation could not be completed due to service unavailability. Please try again later.'
             });
         }
 
