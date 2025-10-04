@@ -222,64 +222,25 @@ export class DocumentProcessorService {
      * Generate embeddings for text chunks using OpenAI
      */
     private async generateEmbeddings(chunks: string[]): Promise<Array<{ vector: number[] }>> {
-        try {
-            this.logger.info({
-                chunksCount: chunks.length
-            }, 'Generating OpenAI embeddings for chunks');
+        this.logger.info({
+            chunksCount: chunks.length
+        }, 'Generating OpenAI embeddings for chunks');
 
-            // Generate real embeddings using OpenAI
-            const embeddings = await this.openai.generateEmbeddings(chunks);
+        // Generate real embeddings using OpenAI - throw error if fails
+        const embeddings = await this.openai.generateEmbeddings(chunks);
 
-            const result = embeddings.map(embedding => ({
-                vector: embedding
-            }));
+        const result = embeddings.map(embedding => ({
+            vector: embedding
+        }));
 
-            this.logger.info({
-                chunksCount: chunks.length,
-                embeddingDimension: embeddings[0]?.length || 0
-            }, 'OpenAI embeddings generated successfully');
+        this.logger.info({
+            chunksCount: chunks.length,
+            embeddingDimension: embeddings[0]?.length || 0
+        }, 'OpenAI embeddings generated successfully');
 
-            return result;
-
-        } catch (error: any) {
-            this.logger.error('Failed to generate OpenAI embeddings:', error);
-
-            // Fallback to mock embeddings if OpenAI fails
-            this.logger.warn('Falling back to mock embeddings');
-            const embeddings = chunks.map((chunk, index) => ({
-                vector: this.generateDeterministicEmbedding(chunk, index)
-            }));
-
-            return embeddings;
-        }
+        return result;
     }
 
-    /**
-     * Generate deterministic embedding based on content
-     */
-    private generateDeterministicEmbedding(text: string, index: number): number[] {
-        // Create a simple hash from text content
-        let hash = 0;
-        for (let i = 0; i < text.length; i++) {
-            const char = text.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-
-        // Add index to make each chunk unique
-        hash += index * 1000;
-
-        // Generate deterministic vector based on hash
-        const vector = [];
-        for (let i = 0; i < 1536; i++) {
-            // Use hash + i as seed for deterministic "random" values
-            const seed = (hash + i) % 2147483647;
-            const normalized = (Math.sin(seed) + 1) / 2; // Normalize to 0-1
-            vector.push(normalized * 2 - 1); // Scale to -1 to 1
-        }
-
-        return vector;
-    }
 
     /**
      * Update existing document with new version

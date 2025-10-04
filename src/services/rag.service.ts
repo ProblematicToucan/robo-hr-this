@@ -199,55 +199,20 @@ export class RAGService {
      * Generate query embedding using OpenAI
      */
     private async generateQueryEmbedding(query: string): Promise<number[]> {
-        try {
-            this.logger.info({
-                query: query.substring(0, 100),
-                model: 'text-embedding-3-small'
-            }, 'Generating OpenAI query embedding');
+        this.logger.info({
+            query: query.substring(0, 100),
+            model: 'text-embedding-3-small'
+        }, 'Generating OpenAI query embedding');
 
-            const embedding = await this.openai.generateEmbedding(query);
+        const embedding = await this.openai.generateEmbedding(query);
 
-            this.logger.info({
-                embeddingDimension: embedding.length
-            }, 'OpenAI query embedding generated successfully');
+        this.logger.info({
+            embeddingDimension: embedding.length
+        }, 'OpenAI query embedding generated successfully');
 
-            return embedding;
-
-        } catch (error: any) {
-            this.logger.error('Failed to generate OpenAI query embedding:', error);
-
-            // Fallback to mock embedding if OpenAI fails
-            this.logger.warn('Falling back to mock query embedding');
-            return this.generateDeterministicEmbedding(query, 0);
-        }
+        return embedding;
     }
 
-    /**
-     * Generate deterministic embedding based on content
-     */
-    private generateDeterministicEmbedding(text: string, index: number): number[] {
-        // Create a simple hash from text content
-        let hash = 0;
-        for (let i = 0; i < text.length; i++) {
-            const char = text.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-
-        // Add index to make each chunk unique
-        hash += index * 1000;
-
-        // Generate deterministic vector based on hash
-        const vector = [];
-        for (let i = 0; i < 1536; i++) {
-            // Use hash + i as seed for deterministic "random" values
-            const seed = (hash + i) % 2147483647;
-            const normalized = (Math.sin(seed) + 1) / 2; // Normalize to 0-1
-            vector.push(normalized * 2 - 1); // Scale to -1 to 1
-        }
-
-        return vector;
-    }
 
     /**
      * Get RAG system statistics
