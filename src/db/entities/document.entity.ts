@@ -14,8 +14,10 @@ import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
  * - project_rubric: Project evaluation criteria and scoring guidelines
  * 
  * Document Lifecycle:
- * 1. Admin uploads ground-truth PDFs to ./ground-truth/ directory
- * 2. Run npm run ingest:ground-truth to process documents
+ * 1. Admin uploads ground-truth PDFs to ./src/ground directory
+ * 2. Use API endpoints to process documents:
+ *    - POST /ingest/document (single document)
+ *    - POST /ingest/directory (batch processing)
  * 3. Documents chunked, embedded, and stored in Qdrant
  * 4. Document metadata saved to this table
  * 5. Used during RAG retrieval for LLM context
