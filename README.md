@@ -164,7 +164,7 @@ Start the evaluation process.
 }
 ```
 
-**Request Parameters:**
+**Request Body:**
 - `jobTitle` (string, required): Job title for evaluation context
 - `cvFileId` (number, required): ID of uploaded CV file
 - `reportFileId` (number, required): ID of uploaded report file
