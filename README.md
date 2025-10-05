@@ -205,7 +205,7 @@ Get evaluation results.
 ```json
 {
   "id": 789,
-  "status": "processing"
+  "status": "processing" | "queued"
 }
 ```
 
