@@ -218,7 +218,7 @@ A backend service that automates initial screening of job applications by evalua
   - Case Study Brief
   - CV Scoring Rubric
   - Project Scoring Rubric
-- Candidate docs are NOT in the core index. If quoting is needed, create a per-job scratch index and delete after completion.
+- Candidate docs are NOT in the core index.
 - Chunking: 512–1024 tokens with overlap 64–128; store metadata: doc_type, section, version, scope.
 - Retrieval:
   - Query templates tuned per stage (e.g., “backend technical skills alignment” for S1).
@@ -271,7 +271,7 @@ A backend service that automates initial screening of job applications by evalua
 ## Design Decisions (Highlights)
 - Express.js + direct SDK calls for transparency and control
 - BullMQ for long-running tasks with clear state machine
-- Separate ground-truth RAG index; scratch index for candidate quoting if needed
+- Separate ground-truth RAG index
 - JSON schema validation + server-side scoring to reduce randomness
 - Versioned prompts and context to ensure reproducibility
 
