@@ -115,6 +115,28 @@ curl -X POST http://localhost:3000/ingest/directory \
   -d '{"directoryPath": "src/ground"}'
 ```
 
+### 7. Testing with Postman Collection
+
+For easy testing and development, a Postman collection is provided:
+
+1. **Import the Collection**: Import `CV Rag.postman.json` into Postman
+2. **Set Environment Variables**: 
+   - `baseUrl`: `http://localhost:3000` (or your server URL)
+3. **Ready to Test**: All endpoints are pre-configured with example requests
+
+**Available Test Scenarios:**
+- **File Upload**: Upload CV and project report files
+- **Evaluation**: Start evaluation jobs with different job titles
+- **Results**: Check evaluation status and retrieve results
+- **Document Ingestion**: Test RAG system with ground-truth documents
+- **System Health**: Monitor API health and status
+
+**Quick Test Flow:**
+1. Upload files using the "Upload" request
+2. Start evaluation with "Evaluate" request
+3. Check results with "Get Result" request
+4. Test document ingestion with "Ingest Directory" request
+
 ## 📚 API Endpoints
 
 ### File Management
