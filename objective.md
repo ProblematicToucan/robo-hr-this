@@ -235,7 +235,7 @@ A backend service that automates initial screening of job applications by evalua
   - enforce JSON schema parsing; reject non-conforming responses
   - server-side recomputation of weighted scores
 - Timeouts: per-call hard timeout; cancel token.
-- Fallbacks: reduce context window or top_k if token limits hit.
+- Fallbacks: reduce context window or top_k if token limits hit. (Not implemented yet)
 
 ---
 
